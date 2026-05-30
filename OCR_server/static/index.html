@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>OCR Vital Signs</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#f5f7fa;color:#333;padding:1.5rem}
+.container{max-width:1100px;margin:0 auto}
+h1{text-align:center;margin-bottom:.3rem;color:#1a1a2e;font-size:1.6rem}
+.subtitle{text-align:center;color:#666;margin-bottom:1.5rem;font-size:.9rem}
+.two-col{display:grid;grid-template-columns:1.5fr 1fr;gap:1.2rem}
+@media(max-width:768px){.two-col{grid-template-columns:1fr}}
+.panel{background:#fff;border-radius:10px;padding:1.5rem;box-shadow:0 2px 10px rgba(0,0,0,.06)}
+.dark{background:#1e1e2e;border-radius:10px;padding:1.2rem;display:flex;flex-direction:column;min-height:380px}
+.dark h3{color:#cdd6f4;font-size:.9rem;margin-bottom:.8rem}
+.drop{border:2px dashed #ccc;border-radius:8px;padding:2.5rem;text-align:center;cursor:pointer;color:#888;transition:.2s}
+.drop:hover,.drop.over{border-color:#4a90d9;background:#f0f7ff;color:#4a90d9}
+.preview{margin-top:1rem;text-align:center;display:none}
+.preview img{max-width:100%;max-height:300px;border-radius:8px;border:1px solid #eee}
+.tbl{width:100%;border-collapse:collapse;margin-top:1rem;font-size:.85rem}
+.tbl th{text-align:left;padding:.5rem .6rem;border-bottom:2px solid #e0e0e0;color:#555;font-size:.8rem}
+.tbl td{padding:.5rem .6rem;border-bottom:1px solid #f0f0f0}
+.tbl .v{font-weight:700;color:#1a1a2e}
+.tbl .n{color:#ccc}
+.btn{display:block;width:100%;padding:.85rem;border:none;border-radius:8px;font-size:1rem;font-weight:700;cursor:pointer;margin-top:1.2rem;background:#4a90d9;color:#fff;transition:.2s}
+.btn:hover{background:#357abd}
+.btn:disabled{background:#ccc;cursor:not-allowed}
+.spin{display:none;text-align:center;padding:1.5rem}
+.spin::after{content:'';display:inline-block;width:36px;height:36px;border:4px solid #eee;border-top-color:#4a90d9;border-radius:50%;animation:sp .8s linear infinite}
+@keyframes sp{to{transform:rotate(360deg)}}
+.err{display:none;background:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:.8rem 1.2rem;color:#dc2626;margin-top:1rem;font-size:.85rem}
+.json-out{flex:1;overflow-y:auto;color:#cdd6f4;font-family:monospace;font-size:.78rem;line-height:1.5;white-space:pre-wrap;word-break:break-word}
+.stat{display:flex;gap:1.5rem;align-items:center;justify-content:center;margin-top:1rem;font-size:.82rem;color:#666}
+.stat strong{color:#1a1a2e}
+.ph{color:#6c7086;font-size:.8rem;text-align:center;padding:3rem 1rem}
+input[type=file]{display:none}
+
+/* Preprocessing steps */
+.steps{display:none;margin-top:1rem;border-top:1px solid #eee;padding-top:.8rem}
+.steps-title{font-size:.75rem;font-weight:600;color:#555;margin-bottom:.5rem;cursor:pointer;user-select:none;display:flex;align-items:center;gap:.4rem}
+.steps-title svg{transition:transform .2s}
+.steps-title.open svg{transform:rotate(90deg)}
+.steps-grid{display:none;grid-template-columns:repeat(5,1fr);gap:.6rem;margin-top:.5rem}
+.steps-grid.open{display:grid}
+.step-item{text-align:center}
+.step-item img{width:100%;aspect-ratio:4/3;object-fit:cover;border-radius:5px;border:1px solid #e0e0e0;cursor:zoom-in;transition:.15s}
+.step-item img:hover{border-color:#4a90d9;transform:scale(1.04)}
+.step-item span{display:block;font-size:.65rem;color:#888;margin-top:.25rem}
+
+/* Lightbox */
+.modal{display:none;position:fixed;inset:0;background:rgba(0,0,0,.8);z-index:999;align-items:center;justify-content:center;cursor:zoom-out}
+.modal.open{display:flex}
+.modal img{max-width:92vw;max-height:92vh;border-radius:8px;box-shadow:0 8px 40px rgba(0,0,0,.6)}
+</style>
+</head>
+<body>
+<div class="container">
+  <h1>OCR Vital Signs</h1>
+  <p class="subtitle">YOLO + VLM hybrid pipeline</p>
+  <div class="two-col">
+    <div>
+      <div class="panel">
+        <div class="drop" id="dz">Drop image here or click to browse<br><small>JPG / PNG</small></div>
+        <input type="file" id="fi" accept="image/jpeg,image/png">
+
+        <div class="preview" id="pv">
+          <img id="pi" alt="preview">
+          <p id="fn" style="font-size:.8rem;color:#666;margin-top:.4rem"></p>
+        </div>
+
+        <table class="tbl" id="tbl" style="display:none">
+          <thead><tr><th>Chỉ số</th><th>Giá trị</th><th>Đơn vị</th></tr></thead>
+          <tbody id="tb"></tbody>
+        </table>
+
+        <div class="stat" id="sb" style="display:none;margin-top:.8rem">
+          Engine: <strong id="en">-</strong> &nbsp;|&nbsp;
+          Time: <strong id="pt">-</strong> &nbsp;|&nbsp;
+          Fields: <strong id="ff">-</strong>
+        </div>
+
+        <!-- Preprocessing steps -->
+        <div class="steps" id="stps">
+          <div class="steps-title" id="stitle" onclick="toggleSteps()">
+            <svg width="10" height="10" viewBox="0 0 10 10"><polygon points="2,1 9,5 2,9" fill="#555"/></svg>
+            Preprocessing Steps
+          </div>
+          <div class="steps-grid" id="sgrid"></div>
+        </div>
+
+        <button class="btn" id="pb" disabled style="margin-top:1rem">Process Image</button>
+        <div class="spin" id="sp"></div>
+        <div class="err" id="er"></div>
+      </div>
+    </div>
+    <div>
+      <div class="dark" id="jp">
+        <h3>JSON Output</h3>
+        <div class="json-out" id="jo"><div class="ph">Process an image to see results</div></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Lightbox modal -->
+<div class="modal" id="modal" onclick="this.classList.remove('open')">
+  <img id="mimg" src="" alt="">
+</div>
+
+<script>
+const STEP_LABELS = {
+  '1_original':    'Original',
+  '2_perspective': 'Perspective',
+  '3_lcd_crop':    'LCD Crop',
+  '4_enhanced':    'Enhanced',
+  '5_final':       'Final'
+};
+const META = {
+  mach:     {n:'Mạch',      u:'BPM'},
+  nhiet_do: {n:'Nhiệt độ',  u:'°C'},
+  huyet_ap: {n:'Huyết áp',  u:'mmHg'},
+  nhip_tho: {n:'Nhịp thở',  u:'lần/ph'},
+  can_nang: {n:'Cân nặng',  u:'kg'},
+  chieu_cao:{n:'Chiều cao', u:'cm'},
+  spo2:     {n:'SpO2',      u:'%'}
+};
+
+const dz = document.getElementById('dz');
+const fi = document.getElementById('fi');
+const pv = document.getElementById('pv');
+const pi = document.getElementById('pi');
+const fn = document.getElementById('fn');
+const pb = document.getElementById('pb');
+const sp = document.getElementById('sp');
+const er = document.getElementById('er');
+const sb = document.getElementById('sb');
+let f = null;
+
+dz.onclick = () => fi.click();
+dz.ondragover = e => { e.preventDefault(); dz.classList.add('over'); };
+dz.ondragleave = () => dz.classList.remove('over');
+dz.ondrop = e => {
+  e.preventDefault(); dz.classList.remove('over');
+  if (e.dataTransfer.files[0]) load(e.dataTransfer.files[0]);
+};
+fi.onchange = () => { if (fi.files[0]) load(fi.files[0]); };
+
+function load(file) {
+  if (!file.type.match(/image\/(jpeg|png)/)) {
+    er.textContent = 'JPG or PNG only'; er.style.display = 'block'; return;
+  }
+  f = file;
+  const r = new FileReader();
+  r.onload = e => {
+    pi.src = e.target.result;
+    pv.style.display = 'block';
+    fn.textContent = file.name + ' (' + (file.size / 1024).toFixed(1) + ' KB)';
+  };
+  r.readAsDataURL(file);
+  pb.disabled = false;
+  er.style.display = 'none';
+  document.getElementById('stps').style.display = 'none';
+}
+
+pb.onclick = async () => {
+  if (!f) return;
+  pb.disabled = true; sp.style.display = 'block';
+  er.style.display = 'none'; sb.style.display = 'none';
+  const fd = new FormData(); fd.append('file', f);
+  const t0 = performance.now();
+  try {
+    const r = await fetch('/process', {method: 'POST', body: fd});
+    const d = await r.json();
+    if (!r.ok) { er.textContent = d.detail || 'Error'; er.style.display = 'block'; return; }
+    show(d, (performance.now() - t0) / 1000);
+  } catch(e) {
+    er.textContent = 'Connection error: ' + e.message; er.style.display = 'block';
+  } finally {
+    sp.style.display = 'none'; pb.disabled = false;
+  }
+};
+
+function toggleSteps() {
+  document.getElementById('stitle').classList.toggle('open');
+  document.getElementById('sgrid').classList.toggle('open');
+}
+
+function showSteps(steps) {
+  const grid = document.getElementById('sgrid');
+  const keys = Object.keys(steps || {}).sort();
+  if (!keys.length) { document.getElementById('stps').style.display = 'none'; return; }
+  grid.innerHTML = keys.map(k => {
+    const label = STEP_LABELS[k] || k;
+    return `<div class="step-item">
+      <img src="${steps[k]}" alt="${label}"
+           onclick="document.getElementById('mimg').src=this.src;document.getElementById('modal').classList.add('open')">
+      <span>${label}</span>
+    </div>`;
+  }).join('');
+  document.getElementById('stps').style.display = 'block';
+  document.getElementById('stitle').classList.add('open');
+  grid.classList.add('open');
+}
+
+function show(d, elapsed) {
+  const v = d.vitals || {}, bp = v.huyet_ap || {}; let found = 0;
+  const rows = [
+    {k:'mach',      val: v.mach},
+    {k:'nhiet_do',  val: v.nhiet_do},
+    {k:'huyet_ap',  val: (bp.tam_thu != null || bp.tam_truong != null)
+                         ? (bp.tam_thu || '-') + '/' + (bp.tam_truong || '-') : null},
+    {k:'nhip_tho',  val: v.nhip_tho},
+    {k:'can_nang',  val: v.can_nang},
+    {k:'chieu_cao', val: v.chieu_cao},
+    {k:'spo2',      val: v.spo2}
+  ];
+  document.getElementById('tb').innerHTML = rows.map(row => {
+    const m = META[row.k] || {}; const nil = row.val == null; if (!nil) found++;
+    return `<tr><td>${m.n || row.k}</td><td class="${nil ? 'n' : 'v'}">${nil ? '-' : row.val}</td><td>${m.u || ''}</td></tr>`;
+  }).join('');
+  document.getElementById('tbl').style.display = 'table';
+  document.getElementById('en').textContent  = d.ocr_engine || '-';
+  document.getElementById('pt').textContent  = (d.processing_time_s || elapsed.toFixed(1)) + 's';
+  document.getElementById('ff').textContent  = found + '/7';
+  sb.style.display = 'flex';
+  showSteps(d.debug_steps);
+  document.getElementById('jo').innerHTML = hl(JSON.stringify(d, null, 2));
+}
+
+function hl(s) {
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+    .replace(/("(\\u[\da-fA-F]{4}|\\[^u]|[^\\"])*"(\s*:)?|\b(true|false|null)\b|-?\d+(?:\.\d*)?(?:[eE][+-]?\d+)?)/g,
+      m => `<span style="color:${/^"/.test(m) ? (/:$/.test(m) ? '#89b4fa' : '#a6e3a1') : (/true|false/.test(m) ? '#cba6f7' : '#fab387')}">${m}</span>`);
+}
+</script>
+</body>
+</html>

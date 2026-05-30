@@ -1,0 +1,17 @@
+# OCR Vital Signs Server — dependencies
+# Install: pip install -r requirements.txt
+
+# Web server
+fastapi>=0.110.0
+uvicorn[standard]>=0.29.0
+
+# HTTP client (async Ollama calls)
+httpx>=0.27.0
+requests>=2.31.0
+
+# Image processing
+opencv-python>=4.9.0
+numpy>=1.26.0
+
+# Optional: auto-detect CUDA device in config.py
+# torch  # uncomment if needed, install separately from https://pytorch.org
