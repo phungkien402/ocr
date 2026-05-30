@@ -134,6 +134,11 @@ def _parse_json(text: str) -> dict | None:
     elif bp is None:
         vitals["huyet_ap"] = None
 
+    # Capture device type if present
+    device = data.get("device")
+    if device and isinstance(device, str):
+        vitals["_device"] = device
+
     return vitals
 
 

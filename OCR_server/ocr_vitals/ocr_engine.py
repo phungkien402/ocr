@@ -74,46 +74,32 @@ def _image_to_b64(image: np.ndarray) -> str:
 
 _VITAL_PROMPT = """You are a medical OCR extraction assistant.
 
-Your task is to extract only information that is directly visible in the image.
+Step 1 — Identify the device type from the image:
+- blood_pressure_monitor: LCD showing SYS/DIA/PUL (blood pressure cuff)
+- spo2_monitor: finger clip device showing SpO2 % and pulse
+- thermometer: digital thermometer showing temperature
+- glucometer: blood glucose meter showing mg/dL or mmol/L
+- vital_signs_monitor: hospital bedside monitor with multiple vitals
+- lab_report: printed paper form with lab/vital results
+- unknown: anything else
+
+Step 2 — Extract ONLY values with clearly visible labels for that device:
+- blood_pressure_monitor: extract mach (PUL), huyet_ap (SYS→tam_thu, DIA→tam_truong) only
+- spo2_monitor: extract spo2, mach only
+- thermometer: extract nhiet_do only (convert °F to °C if needed)
+- glucometer: extract nhiet_do field with glucose value (mg/dL) only
+- vital_signs_monitor: extract all visible fields
+- lab_report: extract all visible fields
+- unknown: extract whatever labeled values are visible
 
 Rules:
-
-- Extract values only when both the value and its associated label can be identified from the image.
-- If a value is missing, obscured, blurry, uncertain, or unlabeled, return null.
-- Never guess, infer, estimate, interpolate, or fabricate values.
-- Missing information must remain null.
-- Return numeric values as JSON numbers, never strings.
-- Return only valid JSON.
-- No markdown.
-- No explanations.
-- No extra text.
-
-Label mapping:
-
-- Mạch / PUL / PR / HR / Pulse / Heart Rate -> mach
-- Nhiệt độ / TEMP / Temperature -> nhiet_do
-- Huyết áp / BP / Blood Pressure:
-    - SYS -> tam_thu
-    - DIA -> tam_truong
-- Nhịp thở / RR / Respiratory Rate -> nhip_tho
-- Cân nặng / Weight -> can_nang
-- Chiều cao / Height -> chieu_cao
-- SpO2 / SPO2 / Oxygen Saturation -> spo2
+- Extract values only when both label AND value are clearly visible
+- Never guess, infer, or fabricate — missing = null
+- Return numeric values as JSON numbers, never strings
+- Return only valid JSON, no markdown, no explanation
 
 Output schema:
-
-{
-  "mach": int|null,
-  "nhiet_do": float|null,
-  "huyet_ap": {
-      "tam_thu": int|null,
-      "tam_truong": int|null
-  }|null,
-  "nhip_tho": int|null,
-  "can_nang": float|null,
-  "chieu_cao": float|null,
-  "spo2": int|null
-}"""
+{"device": "device_type", "mach": int|null, "nhiet_do": float|null, "huyet_ap": {"tam_thu": int|null, "tam_truong": int|null}|null, "nhip_tho": int|null, "can_nang": float|null, "chieu_cao": float|null, "spo2": int|null}"""
 
 
 # ─────────────────────────────────────────────
@@ -152,105 +138,5 @@ def _llama_extract(image: np.ndarray) -> str:
         logger.debug("llama-server response: %s", cleaned[:200])
         return cleaned
     except Exception as e:
-        logger.warning("llama-server error: %s", e)
-        return ""
-
-
-# ─────────────────────────────────────────────
-# Qwen2.5-VL extraction (sync)
-# ─────────────────────────────────────────────
-
-def _QWEN_extract(image: np.ndarray) -> str:
-    """Sync Ollama call. Returns raw model text or empty string on failure."""
-    try:
-        import requests
-    except ImportError:
-        return ""
-
-    small = _resize_for_vlm(image)
-    img_b64 = _image_to_b64(small)
-
-    payload = {
-        "model": OLLAMA_MODEL,
-        "messages": [{"role": "user", "content": _VITAL_PROMPT, "images": [img_b64]}],
-        "stream": False,
-        "think": False,          # qwen3: root-level, không phải trong options
-        "options": {
-            "temperature": 0,
-            "num_predict": 300,
-            "cache_prompt": False,
-        },
-    }
-
-    try:
-        resp = requests.post(OLLAMA_ENDPOINT, json=payload, timeout=OLLAMA_TIMEOUT)
-        resp.raise_for_status()
-        msg = resp.json()["message"]
-        raw = msg.get("content") or ""
-        # qwen3-vl: content rỗng khi thinking chưa finish → không dùng được
-        if not raw.strip():
-            logger.warning("qwen3-vl content empty (done_reason=%s) — model vẫn thinking",
-                           resp.json().get("done_reason"))
-            return ""
-        cleaned = _strip_think(raw)
-        logger.debug("VLM response: %s", cleaned[:200])
-        return cleaned
-    except requests.exceptions.ConnectionError:
-        logger.warning("Ollama not running at %s", OLLAMA_ENDPOINT)
-        return ""
-    except requests.exceptions.Timeout:
-        logger.warning("Ollama timed out after %ds", OLLAMA_TIMEOUT)
-        return ""
-    except Exception as e:
-        logger.warning("Ollama error: %s", e)
-        return ""
-
-
-async def _QWEN_extract_async(image: np.ndarray) -> str:
-    """Async Ollama call using httpx — does not block the event loop."""
-    try:
-        import httpx
-    except ImportError:
-        logger.warning("httpx not installed — falling back to sync call")
-        return _QWEN_extract(image)
-
-    small = _resize_for_vlm(image)
-    img_b64 = _image_to_b64(small)
-
-    payload = {
-        "model": OLLAMA_MODEL,
-        "messages": [{"role": "user", "content": _VITAL_PROMPT, "images": [img_b64]}],
-        "stream": False,
-        "think": False,
-        "options": {
-            "temperature": 0,
-            "num_predict": 300,
-            "cache_prompt": False,
-        },
-    }
-
-    try:
-        async with httpx.AsyncClient(timeout=OLLAMA_TIMEOUT) as client:
-            resp = await client.post(OLLAMA_ENDPOINT, json=payload)
-            resp.raise_for_status()
-            msg = resp.json()["message"]
-            raw = msg.get("content") or ""
-            if not raw.strip():
-                logger.warning("qwen3-vl async: content empty")
-                return ""
-            return _strip_think(raw)
-    except httpx.ConnectError:
-        logger.warning("Ollama not running at %s", OLLAMA_ENDPOINT)
-        return ""
-    except httpx.TimeoutException:
-        logger.warning("Ollama async timed out after %ds", OLLAMA_TIMEOUT)
-        return ""
-    except Exception as e:
         logger.warning("Ollama async error: %s", e)
         return ""
-
-
-def _strip_think(text: str) -> str:
-    """Remove <tool_call>...<tool_call> blocks that Qwen3 reasoning model emits."""
-    text = re.sub(r"<tool_call>.*?<tool_call>", "", text, flags=re.DOTALL)
-    return text.strip()
