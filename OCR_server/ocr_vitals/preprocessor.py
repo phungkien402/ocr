@@ -24,38 +24,21 @@ MAX_DIM = 1024
 # Public API
 # ─────────────────────────────────────────────
 
-def preprocess_for_vlm(image_path: str, max_dim: int = MAX_DIM) -> np.ndarray:
-    """Load + auto-detect type + apply targeted preprocessing for qwen2.5-VL.
+_SKIP_RESIZE_BYTES = 100 * 1024  # 100 KB
 
-    Returns BGR image ≤ max_dim on longest edge.
-    All operations are OpenCV — total < 30 ms on CPU.
-    """
+
+def preprocess_for_vlm(image_path: str, max_dim: int = MAX_DIM) -> np.ndarray:
+    """Load image. Skip resize if file is already under 100 KB."""
+    import os
     img = cv2.imread(image_path)
     if img is None:
         raise ValueError(f"Cannot read image: {image_path}")
 
-    img_type = _detect_type(img)
-    logger.debug("Image type detected: %s (%s)", img_type, image_path)
-
-    if img_type == "lcd":
-        img = _enhance_lcd(img)
-    elif img_type == "handwritten":
-        img = _enhance_handwritten(img)
-    # "printed" → no extra processing needed, VLM handles it fine
-
-    return _resize(img, max_dim)
+    return preprocess_for_vlm_array(img, max_dim)
 
 
 def preprocess_for_vlm_array(image: np.ndarray, max_dim: int = MAX_DIM) -> np.ndarray:
-    """Same as preprocess_for_vlm but accepts a numpy array instead of path."""
-    img_type = _detect_type(image)
-    logger.debug("Image type detected: %s", img_type)
-
-    if img_type == "lcd":
-        pass  # DEBUG: skip LCD enhancement — model reads raw image
-    elif img_type == "handwritten":
-        image = _enhance_handwritten(image)
-
+    """Downscale if needed, pass through otherwise."""
     return _resize(image, max_dim)
 
 

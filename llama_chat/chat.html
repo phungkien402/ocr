@@ -114,16 +114,38 @@ checkStatus();
 setInterval(checkStatus, 5000);
 
 // Image handling
-function addImages(files) {
-  for (const file of files) {
+const MAX_DIM = 1024; // match pipeline setting
+
+function resizeImage(file, maxDim) {
+  return new Promise(resolve => {
     const reader = new FileReader();
     reader.onload = e => {
-      const dataUrl = e.target.result;
-      const b64 = dataUrl.split(',')[1];
-      pendingImages.push({ b64, dataUrl });
-      renderPreviews();
+      const img = new Image();
+      img.onload = () => {
+        let w = img.width, h = img.height;
+        if (w > maxDim || h > maxDim) {
+          if (w > h) { h = Math.round(h * maxDim / w); w = maxDim; }
+          else       { w = Math.round(w * maxDim / h); h = maxDim; }
+        }
+        const canvas = document.createElement('canvas');
+        canvas.width = w; canvas.height = h;
+        canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+        const dataUrl = canvas.toDataURL('image/jpeg', 0.85);
+        resolve({ b64: dataUrl.split(',')[1], dataUrl, origSize: `${img.width}×${img.height}`, newSize: `${w}×${h}` });
+      };
+      img.src = e.target.result;
     };
     reader.readAsDataURL(file);
+  });
+}
+
+async function addImages(files) {
+  for (const file of files) {
+    const result = await resizeImage(file, MAX_DIM);
+    if (result.origSize !== result.newSize)
+      console.log(`Resized: ${result.origSize} → ${result.newSize}`);
+    pendingImages.push(result);
+    renderPreviews();
   }
   document.getElementById('fileInput').value = '';
 }
