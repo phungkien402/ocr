@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>OCR /v1/extract Test</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: system-ui, -apple-system, sans-serif; background: #0f172a; color: #e2e8f0; padding: 1.5rem; min-height: 100vh; }
+.wrap { max-width: 1100px; margin: 0 auto; }
+h1 { font-size: 1.4rem; margin-bottom: .3rem; }
+.sub { font-size: .85rem; color: #64748b; margin-bottom: 1.5rem; }
+.grid { display: grid; grid-template-columns: 1.2fr 1fr; gap: 1.2rem; }
+@media (max-width: 800px) { .grid { grid-template-columns: 1fr; } }
+.card { background: #1e293b; border-radius: 10px; padding: 1.2rem; }
+.card h2 { font-size: .82rem; text-transform: uppercase; color: #94a3b8; margin-bottom: 1rem; letter-spacing: .05em; font-weight: 600; }
+label { display: block; font-size: .8rem; color: #94a3b8; margin-bottom: .35rem; }
+input[type=text], input[type=password] {
+  width: 100%; background: #0f172a; border: 1px solid #334155;
+  border-radius: 6px; padding: .55rem .75rem; color: #e2e8f0;
+  font-family: ui-monospace, monospace; font-size: .85rem;
+}
+input:focus { outline: none; border-color: #3b82f6; }
+.row { margin-bottom: .8rem; }
+.drop { border: 2px dashed #334155; border-radius: 8px; padding: 2rem; text-align: center; cursor: pointer; transition: .15s; color: #64748b; }
+.drop:hover, .drop.over { border-color: #3b82f6; background: #0f172a; color: #93c5fd; }
+.drop small { display: block; margin-top: .35rem; font-size: .7rem; opacity: .7; }
+input[type=file] { display: none; }
+.preview { display: none; margin-top: .8rem; text-align: center; }
+.preview img { max-width: 100%; max-height: 280px; border-radius: 6px; border: 1px solid #334155; }
+.preview p { font-size: .72rem; color: #64748b; margin-top: .4rem; }
+.btn { width: 100%; margin-top: 1rem; padding: .7rem; background: #2563eb; color: white; border: none; border-radius: 6px; font-weight: 600; cursor: pointer; transition: .15s; font-size: .9rem; }
+.btn:hover { background: #1d4ed8; }
+.btn:disabled { background: #1e3a5f; color: #475569; cursor: not-allowed; }
+.status { margin-top: .8rem; padding: .55rem .8rem; border-radius: 6px; font-size: .78rem; display: none; }
+.status.ok { background: #064e3b; color: #6ee7b7; display: block; }
+.status.err { background: #7f1d1d; color: #fca5a5; display: block; }
+.status.loading { background: #1e3a5f; color: #93c5fd; display: block; }
+.fields { display: grid; grid-template-columns: 1fr 1fr; gap: .5rem; }
+.field { background: #0f172a; padding: .6rem .8rem; border-radius: 6px; border-left: 3px solid #334155; }
+.field.has-value { border-left-color: #10b981; }
+.field.null { border-left-color: #475569; opacity: .55; }
+.field .label { font-size: .68rem; color: #64748b; text-transform: uppercase; letter-spacing: .04em; font-weight: 600; }
+.field .value { font-size: 1.1rem; font-weight: 700; margin-top: .15rem; font-variant-numeric: tabular-nums; }
+.field .value.null { color: #475569; font-weight: 400; font-style: italic; font-size: .85rem; }
+.field .unit { font-size: .65rem; color: #64748b; margin-left: .3rem; font-weight: 400; }
+.meta { font-size: .68rem; color: #64748b; margin-top: 1rem; padding-top: .8rem; border-top: 1px solid #334155; line-height: 1.6; }
+.meta code { background: #0f172a; padding: 1px 5px; border-radius: 3px; font-family: ui-monospace, monospace; color: #cbd5e1; }
+pre { background: #0f172a; padding: .8rem; border-radius: 6px; font-size: .72rem; max-height: 280px; overflow: auto; color: #cbd5e1; font-family: ui-monospace, monospace; }
+details { margin-top: .9rem; }
+summary { font-size: .73rem; color: #64748b; cursor: pointer; user-select: none; }
+.health { font-size: .7rem; color: #64748b; margin-top: .6rem; }
+.health .dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; margin-right: 5px; vertical-align: middle; background: #475569; }
+.health .dot.on { background: #10b981; }
+.health .dot.off { background: #ef4444; }
+.help { font-size: .7rem; color: #475569; margin-top: .3rem; line-height: 1.4; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>OCR Vital Signs — /v1/extract test</h1>
+  <p class="sub">Endpoint <code style="background:#1e293b;padding:1px 6px;border-radius:3px;font-family:ui-monospace,monospace">POST /v1/extract</code> với <code style="background:#1e293b;padding:1px 6px;border-radius:3px;font-family:ui-monospace,monospace">X-API-Key</code> header. Trả JSON 7 chỉ số + request_id.</p>
+
+  <div class="grid">
+    <!-- Left: input -->
+    <div class="card">
+      <h2>Input</h2>
+
+      <div class="row">
+        <label>API Key (X-API-Key header)</label>
+        <input type="password" id="apikey" placeholder="paste OCR_API_KEY..." autocomplete="off">
+        <p class="help">Lưu trong session storage, không gửi đi đâu khác ngoài endpoint này.</p>
+      </div>
+
+      <div class="row">
+        <label>Image</label>
+        <div class="drop" id="drop" onclick="document.getElementById('file').click()">
+          <div>📷 Click hoặc kéo ảnh vào đây</div>
+          <small>JPG / PNG, max 10MB</small>
+        </div>
+        <input type="file" id="file" accept="image/jpeg,image/png">
+        <div class="preview" id="preview">
+          <img id="img">
+          <p id="fname"></p>
+        </div>
+      </div>
+
+      <button class="btn" id="submit" disabled>Extract</button>
+      <div class="status" id="status"></div>
+
+      <div class="health">
+        <span class="dot" id="dot-srv"></span>Server: <span id="srv">?</span>
+        &nbsp;·&nbsp;
+        <span class="dot" id="dot-auth"></span>Auth: <span id="auth">?</span>
+        &nbsp;·&nbsp;
+        <span class="dot" id="dot-store"></span>Storage: <span id="store">?</span>
+      </div>
+    </div>
+
+    <!-- Right: output -->
+    <div class="card">
+      <h2>Output</h2>
+      <div id="output">
+        <p style="color:#475569;font-size:.85rem;text-align:center;padding:2rem 0">Upload ảnh để bắt đầu</p>
+      </div>
+      <details id="raw-details" style="display:none">
+        <summary>Raw JSON response</summary>
+        <pre id="raw"></pre>
+      </details>
+    </div>
+  </div>
+</div>
+
+<script>
+const UNITS = {
+  mach: 'lần/phút', nhiet_do: '°C', nhip_tho: 'lần/phút',
+  can_nang: 'kg', chieu_cao: 'cm', spo2: '%', huyet_ap: 'mmHg'
+};
+const LABEL_VN = {
+  mach: 'Mạch', nhiet_do: 'Nhiệt độ', huyet_ap: 'Huyết áp',
+  nhip_tho: 'Nhịp thở', can_nang: 'Cân nặng', chieu_cao: 'Chiều cao', spo2: 'SpO₂'
+};
+const FIELDS = ['mach','nhiet_do','huyet_ap','nhip_tho','can_nang','chieu_cao','spo2'];
+
+let selectedFile = null;
+
+// Restore key from sessionStorage
+const apiInput = document.getElementById('apikey');
+apiInput.value = sessionStorage.getItem('ocr_api_key') || '';
+apiInput.addEventListener('input', () => sessionStorage.setItem('ocr_api_key', apiInput.value));
+
+// Drop zone
+const drop = document.getElementById('drop');
+drop.addEventListener('dragover', e => { e.preventDefault(); drop.classList.add('over'); });
+drop.addEventListener('dragleave', () => drop.classList.remove('over'));
+drop.addEventListener('drop', e => {
+  e.preventDefault(); drop.classList.remove('over');
+  handleFile(e.dataTransfer.files[0]);
+});
+document.getElementById('file').addEventListener('change', e => handleFile(e.target.files[0]));
+
+function handleFile(f) {
+  if (!f) return;
+  if (!['image/jpeg','image/png'].includes(f.type)) {
+    showStatus('Chỉ chấp nhận JPG/PNG', 'err');
+    return;
+  }
+  selectedFile = f;
+  document.getElementById('fname').textContent = `${f.name} · ${(f.size/1024).toFixed(0)} KB`;
+  const r = new FileReader();
+  r.onload = e => {
+    document.getElementById('img').src = e.target.result;
+    document.getElementById('preview').style.display = 'block';
+  };
+  r.readAsDataURL(f);
+  document.getElementById('submit').disabled = false;
+  showStatus('', '');
+}
+
+async function submit() {
+  if (!selectedFile) return;
+  const key = apiInput.value.trim();
+  if (!key) {
+    showStatus('Cần nhập API key', 'err');
+    return;
+  }
+  document.getElementById('submit').disabled = true;
+  showStatus('⏳ Đang xử lý...', 'loading');
+
+  const fd = new FormData();
+  fd.append('file', selectedFile);
+  const t0 = performance.now();
+  try {
+    const resp = await fetch('/v1/extract', {
+      method: 'POST',
+      headers: { 'X-API-Key': key },
+      body: fd
+    });
+    const data = await resp.json();
+    const dt = ((performance.now() - t0) / 1000).toFixed(2);
+    if (!resp.ok) {
+      showStatus(`HTTP ${resp.status}: ${data.detail || JSON.stringify(data)}`, 'err');
+      renderRaw(data);
+    } else {
+      showStatus(`✓ OK · ${dt}s`, 'ok');
+      renderResult(data, dt);
+    }
+  } catch (e) {
+    showStatus(`Network error: ${e.message}`, 'err');
+  } finally {
+    document.getElementById('submit').disabled = false;
+  }
+}
+document.getElementById('submit').addEventListener('click', submit);
+
+function showStatus(msg, kind) {
+  const el = document.getElementById('status');
+  el.className = 'status' + (kind ? ' ' + kind : '');
+  el.textContent = msg;
+  if (!msg) el.style.display = 'none';
+}
+
+function renderResult(d, dt) {
+  const out = document.getElementById('output');
+  let html = '<div class="fields">';
+  for (const f of FIELDS) {
+    const v = d[f];
+    if (f === 'huyet_ap') {
+      if (v && (v.tam_thu != null || v.tam_truong != null)) {
+        const sys = v.tam_thu ?? '—';
+        const dia = v.tam_truong ?? '—';
+        html += `<div class="field has-value" style="grid-column:span 2">
+          <div class="label">${LABEL_VN[f]}</div>
+          <div class="value">${sys}/${dia}<span class="unit">mmHg</span></div>
+        </div>`;
+      } else {
+        html += `<div class="field null" style="grid-column:span 2">
+          <div class="label">${LABEL_VN[f]}</div>
+          <div class="value null">null</div>
+        </div>`;
+      }
+    } else if (v != null) {
+      html += `<div class="field has-value">
+        <div class="label">${LABEL_VN[f]}</div>
+        <div class="value">${v}<span class="unit">${UNITS[f]}</span></div>
+      </div>`;
+    } else {
+      html += `<div class="field null">
+        <div class="label">${LABEL_VN[f]}</div>
+        <div class="value null">null</div>
+      </div>`;
+    }
+  }
+  html += '</div>';
+  if (d.request_id) {
+    html += `<div class="meta">request_id: <code>${d.request_id}</code><br>elapsed: ${dt}s</div>`;
+  }
+  out.innerHTML = html;
+  renderRaw(d);
+}
+
+function renderRaw(d) {
+  document.getElementById('raw').textContent = JSON.stringify(d, null, 2);
+  document.getElementById('raw-details').style.display = 'block';
+}
+
+// Health check on load
+async function checkHealth() {
+  try {
+    const r = await fetch('/health');
+    const d = await r.json();
+    document.getElementById('srv').textContent = d.version || '?';
+    document.getElementById('dot-srv').classList.add('on');
+    document.getElementById('auth').textContent = d.auth_enabled ? 'enabled' : 'disabled';
+    document.getElementById('dot-auth').classList.add(d.auth_enabled ? 'on' : 'off');
+    document.getElementById('store').textContent = d.storage_enabled ? 'enabled' : 'disabled';
+    document.getElementById('dot-store').classList.add(d.storage_enabled ? 'on' : 'off');
+  } catch (e) {
+    document.getElementById('srv').textContent = 'down';
+    document.getElementById('dot-srv').classList.add('off');
+  }
+}
+checkHealth();
+</script>
+</body>
+</html>

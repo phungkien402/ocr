@@ -1,6 +1,6 @@
 """Parser for vital signs extracted by OCR engine."""
 from __future__ import annotations
-import json, logging, re, unicodedata
+import difflib, json, logging, re, unicodedata
 from .config import FIELD_KEYWORDS
 
 logger = logging.getLogger(__name__)
@@ -12,13 +12,24 @@ LCD_LABELS = {
 }
 
 _LABEL_MAP = {
-    "mach": "mach", "mạch": "mach", "pulse": "mach", "hr": "mach", "heart rate": "mach",
+    # Mạch / pulse / heart rate. Note: "nhịp tim" = heart rate (mạch),
+    # distinct from "nhịp thở" = respiratory rate. Both common; map both.
+    "mach": "mach", "mạch": "mach",
+    "nhip tim": "mach", "nhịp tim": "mach",
+    "pulse": "mach", "hr": "mach", "heart rate": "mach", "heartrate": "mach",
+    # Nhiệt độ / temperature
     "nhiet do": "nhiet_do", "nhiệt độ": "nhiet_do", "temp": "nhiet_do", "temperature": "nhiet_do",
+    # Huyết áp / blood pressure
     "huyet ap": "huyet_ap", "huyết áp": "huyet_ap", "blood pressure": "huyet_ap", "bp": "huyet_ap",
-    "nhip tho": "nhip_tho", "nhịp thở": "nhip_tho", "respiratory rate": "nhip_tho", "rr": "nhip_tho",
+    # Nhịp thở / respiratory rate
+    "nhip tho": "nhip_tho", "nhịp thở": "nhip_tho",
+    "respiratory rate": "nhip_tho", "rr": "nhip_tho", "resp": "nhip_tho",
+    # Cân nặng / weight
     "can nang": "can_nang", "cân nặng": "can_nang", "weight": "can_nang",
+    # Chiều cao / height (incl. common OCR mis-reads)
     "chieu cao": "chieu_cao", "chiều cao": "chieu_cao", "chỉu cao": "chieu_cao",
     "chiu cao": "chieu_cao", "height": "chieu_cao",
+    # SpO2 / oxygen saturation
     "spo2": "spo2", "sp02": "spo2", "o2": "spo2",
 }
 
@@ -184,8 +195,13 @@ def _parse_label_value(text: str) -> dict | None:
         m = re.match(r"^(.+?)\s*[:：]\s*(.+)$", line)
         if not m:
             continue
-        label = m.group(1).strip().rstrip("-*•").strip()
-        value = m.group(2).strip()
+        # Strip markdown/list noise: bullets, headers, numbered prefixes, wrapping asterisks
+        label_raw = m.group(1).strip()
+        label_raw = re.sub(r"^[-*•#>\s]+", "", label_raw)        # leading bullets/headers
+        label_raw = re.sub(r"^\(?\d+[.)\]]\s*", "", label_raw)  # "1.", "1)", "(1)"
+        label_raw = label_raw.strip("*_`").strip()                # wrapping bold/code marks
+        label = label_raw.strip().rstrip("-*•:").strip()
+        value = m.group(2).strip().strip("*_`").strip()
         if value.lower() in ("null", "none", "n/a", "-", "không có"):
             continue
         field = _fuzzy_label(label)
@@ -225,16 +241,35 @@ def _fuzzy_label(label: str) -> str | None:
     # Direct match
     if normalized in _LABEL_MAP:
         return _LABEL_MAP[normalized]
-    # Strip diacritics and try again
-    nd = "".join(c for c in unicodedata.normalize("NFKD", normalized)
+    # Strip diacritics — NFKD doesn't decompose đ/Đ, so map them first
+    pre = normalized.replace("đ", "d").replace("Đ", "d")
+    nd = "".join(c for c in unicodedata.normalize("NFKD", pre)
                  if not unicodedata.combining(c))
     if nd in _LABEL_MAP:
         return _LABEL_MAP[nd]
+    # Try collapsed (no-space) form against collapsed map keys.
+    # Handles "nhiệtđộ" (VLM dropped space) vs "nhiệt độ" in map.
+    nd_collapsed = nd.replace(" ", "")
+    for key, field in _LABEL_MAP.items():
+        if key.replace(" ", "") == nd_collapsed:
+            return field
     # Partial match
     for key, field in _LABEL_MAP.items():
         if key in normalized or normalized in key:
             return field
-    return None
+    # Last resort: fuzzy ratio on diacritic-stripped form.
+    # Catches VLM typos like "chỉnh cao" → "chiều cao", "nhip thơ" → "nhịp thở".
+    # Threshold 0.78 chosen to accept 1-2 char typos but reject unrelated words.
+    best_field = None
+    best_score = 0.78
+    for key, field in _LABEL_MAP.items():
+        key_nd = "".join(c for c in unicodedata.normalize("NFKD", key.replace("đ", "d"))
+                         if not unicodedata.combining(c))
+        score = difflib.SequenceMatcher(None, nd, key_nd).ratio()
+        if score > best_score:
+            best_score = score
+            best_field = field
+    return best_field
 
 
 def _parse_value(field: str, value: str):
