@@ -1,44 +1,43 @@
-"""OCR engine — single VLM extraction call via OpenAI-compatible endpoint.
+"""OCR engine — async VLM extraction via OpenAI-compatible endpoint.
 
-Works with either llama-server or vLLM (both expose /v1/chat/completions).
-Endpoint + model name are env-configurable so you can swap backends without
-touching code.
+Works with either llama-server or vLLM. Uses httpx.AsyncClient to avoid
+blocking the FastAPI event loop on long VLM calls.
+
+PHI handling: full VLM response is NOT logged. Only length + a short hash
+preview is emitted, so logs are safe to ship off-server.
 """
 
-import base64, logging, os, re, unicodedata
+import base64, hashlib, logging, os, re, unicodedata
 import cv2
+import httpx
 import numpy as np
 from .preprocessor import preprocess_for_vlm_array
 
 logger = logging.getLogger(__name__)
 
 # ── Endpoint config (env-overridable) ───────────────────────────────────────
-# vLLM:        http://localhost:8080/v1/chat/completions
-# llama-server: http://localhost:8080/v1/chat/completions  (same path)
 VLM_ENDPOINT = os.environ.get("VLM_ENDPOINT", "http://localhost:8080/v1/chat/completions")
-
-# Model name sent in payload. vLLM requires the actual HF model id.
-# llama-server is permissive — any string works (use "local" historically).
-VLM_MODEL = os.environ.get("VLM_MODEL", "Qwen/Qwen2.5-VL-3B-Instruct")
-
-VLM_TIMEOUT = int(os.environ.get("VLM_TIMEOUT_SECONDS", "120"))
+VLM_MODEL    = os.environ.get("VLM_MODEL", "Qwen/Qwen2.5-VL-3B-Instruct")
+VLM_TIMEOUT  = int(os.environ.get("VLM_TIMEOUT_SECONDS", "120"))
 MAX_IMAGE_DIM = 1024
 
-# Back-compat aliases (other modules may still import the old names)
+# Back-compat aliases (older imports may use these names)
 LLAMA_ENDPOINT = VLM_ENDPOINT
-OLLAMA_MODEL = VLM_MODEL
+OLLAMA_MODEL   = VLM_MODEL
 OLLAMA_TIMEOUT = VLM_TIMEOUT
 BACKEND = "openai-compat"
 
-# Structured fill-in prompt: provide canonical labels so VLM uses them verbatim
-# instead of hallucinating (e.g. "Chỉ cầu" instead of "chiều cao"). Empty value
-# → null. Avoids enumeration drift on small VLMs (Qwen2.5-VL-3B).
-
+# Structured fill-in prompt
 PROMPT = (
-    "Bạn là trợ lý OCR y tế. Đọc ảnh và liệt kê các chỉ số sinh tồn thấy được.\n"
-    "Chỉ đọc giá trị thực sự có trong ảnh, không suy đoán, giữ nguyên giá trị.\n"
-    "Huyết áp dạng SYS/DIA thì ghi: Huyết áp: SYS/DIA\n"
-    "Trả về từng dòng theo dạng: tên chỉ số: giá trị"
+    "Đọc ảnh và điền giá trị cho từng chỉ số dưới đây. "
+    "Nếu không có trong ảnh, ghi: null. Giữ nguyên tên chỉ số.\n"
+    "mạch:\n"
+    "nhiệt độ:\n"
+    "huyết áp:\n"
+    "nhịp thở:\n"
+    "cân nặng:\n"
+    "chiều cao:\n"
+    "spo2:"
 )
 
 
@@ -63,33 +62,24 @@ def _normalize_for_match(text: str) -> str:
     """Lowercase, strip Vietnamese diacritics, drop whitespace & punctuation."""
     s = text.lower().replace("đ", "d").replace("Đ", "d")
     nfd = unicodedata.normalize("NFD", s)
-    return "".join(
-        c for c in nfd
-        if unicodedata.category(c) != "Mn" and c.isalnum()
-    )
+    return "".join(c for c in nfd if unicodedata.category(c) != "Mn" and c.isalnum())
 
 
 _ECHO_MARKERS = (
-    "diengiatrichotungchiso",     # "điền giá trị cho từng chỉ số"
-    "neukhongcotronganhghi",      # "Nếu không có trong ảnh, ghi"
-    "giunguyentenchiso",          # "Giữ nguyên tên chỉ số"
+    "diengiatrichotungchiso",
+    "neukhongcotronganhghi",
+    "giunguyentenchiso",
 )
 
 
-def extract_vitals(image: np.ndarray) -> str:
-    """Single VLM call — returns raw text for parser."""
-    try:
-        import requests
-    except ImportError:
-        return ""
+def _log_safe_preview(text: str) -> str:
+    """Don't log PHI. Return length + sha256 prefix so we can correlate without leaking values."""
+    digest = hashlib.sha256(text.encode("utf-8")).hexdigest()[:8]
+    return f"len={len(text)} sha8={digest}"
 
-    resized = _resize(image)
-    img_b64 = _to_b64(resized)
-    logger.info("[VLM] %dx%d -> %d KB (model=%s)",
-                resized.shape[1], resized.shape[0],
-                len(img_b64) * 3 // 4 // 1024, VLM_MODEL)
 
-    payload = {
+def _build_payload(img_b64: str) -> dict:
+    return {
         "model": VLM_MODEL,
         "messages": [{"role": "user", "content": [
             {"type": "text",      "text": PROMPT},
@@ -99,20 +89,53 @@ def extract_vitals(image: np.ndarray) -> str:
         "max_tokens": 1024,
         "stream": False,
     }
+
+
+def _process_response(raw_text: str) -> str:
+    """Strip <think>, check echo. Return text or '' if rejected."""
+    cleaned = _strip_think(raw_text)
+    normalized = _normalize_for_match(cleaned)
+    hits = sum(1 for m in _ECHO_MARKERS if m in normalized)
+    if hits >= 2:
+        logger.warning("[VLM] model echoed instructions (%d markers)", hits)
+        return ""
+    logger.info("[VLM] response %s", _log_safe_preview(cleaned))
+    return cleaned
+
+
+async def extract_vitals_async(image: np.ndarray) -> str:
+    """Async VLM call. Use this in async contexts (FastAPI handlers)."""
+    resized = _resize(image)
+    img_b64 = _to_b64(resized)
+    logger.info("[VLM] request %dx%d ~%d KB (model=%s)",
+                resized.shape[1], resized.shape[0],
+                len(img_b64) * 3 // 4 // 1024, VLM_MODEL)
     try:
-        resp = requests.post(VLM_ENDPOINT, json=payload, timeout=VLM_TIMEOUT)
-        resp.raise_for_status()
-        raw = resp.json()["choices"][0]["message"]["content"]
-        cleaned = _strip_think(raw)
-        logger.info("[VLM] response: %s", cleaned[:300])
-        normalized = _normalize_for_match(cleaned)
-        hits = sum(1 for m in _ECHO_MARKERS if m in normalized)
-        if hits >= 2:
-            logger.warning("[VLM] model echoed instructions (%d markers hit)", hits)
-            return ""
-        return cleaned
+        async with httpx.AsyncClient(timeout=VLM_TIMEOUT) as client:
+            r = await client.post(VLM_ENDPOINT, json=_build_payload(img_b64))
+            r.raise_for_status()
+            raw = r.json()["choices"][0]["message"]["content"]
+        return _process_response(raw)
     except Exception as e:
-        logger.warning("[VLM] error: %s", e)
+        logger.warning("[VLM] error: %s", type(e).__name__)
+        return ""
+
+
+def extract_vitals(image: np.ndarray) -> str:
+    """Sync wrapper. Prefer extract_vitals_async in FastAPI handlers."""
+    import requests
+    resized = _resize(image)
+    img_b64 = _to_b64(resized)
+    logger.info("[VLM] request %dx%d ~%d KB (model=%s) [sync]",
+                resized.shape[1], resized.shape[0],
+                len(img_b64) * 3 // 4 // 1024, VLM_MODEL)
+    try:
+        r = requests.post(VLM_ENDPOINT, json=_build_payload(img_b64), timeout=VLM_TIMEOUT)
+        r.raise_for_status()
+        raw = r.json()["choices"][0]["message"]["content"]
+        return _process_response(raw)
+    except Exception as e:
+        logger.warning("[VLM] error: %s", type(e).__name__)
         return ""
 
 
@@ -124,4 +147,4 @@ def extract_text(image: np.ndarray, **kwargs) -> str:
     return extract_vitals(image)
 
 async def extract_text_async(image: np.ndarray, **kwargs) -> str:
-    return extract_vitals(image)
+    return await extract_vitals_async(image)

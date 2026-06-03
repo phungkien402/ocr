@@ -1,3 +1,17 @@
 # Default ignored files
 /shelf/
 /workspace.xml
+venv/
+.venv/
+__pycache__/
+*.pkl
+*.pth
+*.onnx
+*.zip
+*.tar.gz
+*.log
+*.env
+*.pem
+*.key
+*.crt
+*.bak

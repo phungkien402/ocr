@@ -25,6 +25,11 @@ logger = logging.getLogger(__name__)
 _STORAGE_ROOT: Optional[Path] = None
 
 
+def is_enabled() -> bool:
+    """True iff STORAGE_PATH is set AND directory is writable."""
+    return _root() is not None
+
+
 def _root() -> Optional[Path]:
     """Lazy-resolve STORAGE_PATH env. Returns None if storage disabled."""
     global _STORAGE_ROOT

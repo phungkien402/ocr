@@ -1,0 +1,371 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>OCR Demo — PHR ↔ OCR Backend</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: system-ui, -apple-system, sans-serif; background: #0f172a; color: #e2e8f0; padding: 1.2rem; min-height: 100vh; }
+.wrap { max-width: 1300px; margin: 0 auto; }
+.title { text-align: center; margin-bottom: 1.2rem; }
+.title h1 { font-size: 1.5rem; font-weight: 700; }
+.title p { font-size: .85rem; color: #64748b; margin-top: .3rem; }
+
+.flow { display: grid; grid-template-columns: 1fr auto 1fr; gap: 1rem; align-items: start; }
+@media (max-width: 900px) { .flow { grid-template-columns: 1fr; } .arrow { display: none !important; } }
+.panel { background: #1e293b; border-radius: 12px; padding: 1.3rem; min-height: 550px; display: flex; flex-direction: column; }
+.panel h2 { font-size: .82rem; text-transform: uppercase; letter-spacing: .08em; margin-bottom: .3rem; }
+.panel .sub { font-size: .72rem; color: #64748b; margin-bottom: 1rem; }
+.panel.in h2 { color: #60a5fa; }
+.panel.out h2 { color: #34d399; }
+.arrow { font-size: 2rem; color: #475569; align-self: center; padding: 0 .3rem; user-select: none; }
+
+label { display: block; font-size: .75rem; color: #94a3b8; margin: .8rem 0 .3rem; }
+input[type=text], input[type=password] {
+  width: 100%; background: #0f172a; border: 1px solid #334155;
+  border-radius: 6px; padding: .55rem .75rem; color: #e2e8f0;
+  font-family: ui-monospace, monospace; font-size: .82rem;
+}
+input:focus { outline: none; border-color: #3b82f6; }
+
+.drop { border: 2px dashed #334155; border-radius: 8px; padding: 1.6rem; text-align: center; cursor: pointer; transition: .15s; color: #64748b; font-size: .82rem; }
+.drop:hover, .drop.over { border-color: #3b82f6; background: #0f172a; color: #93c5fd; }
+input[type=file] { display: none; }
+.preview { display: none; margin-top: .7rem; text-align: center; }
+.preview img { max-width: 100%; max-height: 240px; border-radius: 6px; border: 1px solid #334155; }
+.preview p { font-size: .68rem; color: #64748b; margin-top: .3rem; }
+
+.btn { width: 100%; margin-top: 1rem; padding: .7rem; color: white; border: none; border-radius: 6px; font-weight: 600; cursor: pointer; transition: .15s; font-size: .88rem; background: #2563eb; }
+.btn:hover:not(:disabled) { background: #1d4ed8; }
+.btn:disabled { background: #1e3a5f; color: #475569; cursor: not-allowed; }
+
+.code { background: #0f172a; border-radius: 6px; padding: .75rem .9rem; font-family: ui-monospace, monospace; font-size: .73rem; line-height: 1.55; color: #cbd5e1; white-space: pre-wrap; word-break: break-all; max-height: 240px; overflow: auto; border-left: 3px solid #334155; }
+.code.req { border-left-color: #60a5fa; }
+.code.res { border-left-color: #34d399; }
+.code-label { font-size: .68rem; color: #64748b; text-transform: uppercase; letter-spacing: .04em; margin: 1rem 0 .3rem; font-weight: 600; }
+
+.fields { display: grid; grid-template-columns: 1fr 1fr; gap: .5rem; margin-top: .5rem; }
+.field { background: #0f172a; padding: .55rem .75rem; border-radius: 6px; border-left: 3px solid #475569; }
+.field.has { border-left-color: #10b981; }
+.field.null { border-left-color: #475569; opacity: .55; }
+.field.bp { grid-column: span 2; }
+.field .lab { font-size: .65rem; color: #64748b; text-transform: uppercase; letter-spacing: .04em; font-weight: 600; }
+.field .val { font-size: 1.05rem; font-weight: 700; margin-top: .15rem; font-variant-numeric: tabular-nums; }
+.field .val.null { color: #475569; font-weight: 400; font-style: italic; font-size: .82rem; }
+.field .u { font-size: .62rem; color: #64748b; margin-left: .3rem; font-weight: 400; }
+
+.status { margin-top: .8rem; padding: .55rem .8rem; border-radius: 5px; font-size: .76rem; display: none; }
+.status.ok { background: #064e3b; color: #6ee7b7; display: block; }
+.status.err { background: #7f1d1d; color: #fca5a5; display: block; }
+.status.loading { background: #1e3a5f; color: #93c5fd; display: block; }
+.meta { font-size: .68rem; color: #64748b; margin-top: .8rem; padding-top: .6rem; border-top: 1px solid #334155; line-height: 1.5; }
+.meta code { background: #0f172a; padding: 1px 5px; border-radius: 3px; font-family: ui-monospace, monospace; color: #cbd5e1; word-break: break-all; }
+.placeholder { color: #475569; font-size: .85rem; text-align: center; padding: 4rem 0; font-style: italic; }
+
+.health { font-size: .68rem; color: #64748b; text-align: center; margin-top: 1rem; }
+.health .dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; margin-right: 4px; vertical-align: middle; background: #475569; }
+.health .dot.on { background: #10b981; }
+.health .dot.off { background: #ef4444; }
+
+.tabs { display: flex; gap: .4rem; margin: 1rem 0 .5rem; }
+.tab { padding: .35rem .8rem; font-size: .72rem; background: #0f172a; color: #94a3b8; border: 1px solid #334155; border-radius: 5px; cursor: pointer; font-family: inherit; }
+.tab.active { background: #334155; color: #e2e8f0; border-color: #475569; }
+.tab-content { display: none; }
+.tab-content.active { display: block; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="title">
+    <h1>OCR Demo — PHR ↔ OCR Backend</h1>
+    <p>Input: ảnh từ app PHR · Output: JSON 7 chỉ số trả về PHR</p>
+  </div>
+
+  <div class="flow">
+    <!-- ─── INPUT (PHR sends) ──────────────────── -->
+    <div class="panel in">
+      <h2>📥 Input — PHR → OCR Backend</h2>
+      <p class="sub">App PHR mobile gửi ảnh + API key. Backend nhận POST /v1/extract.</p>
+
+      <label>API Key (header X-API-Key)</label>
+      <input type="password" id="apikey" placeholder="paste OCR_API_KEY..." autocomplete="off">
+
+      <label>Ảnh thiết bị / phiếu kết quả</label>
+      <div class="drop" id="drop" onclick="document.getElementById('file').click()">
+        📷 Click hoặc kéo ảnh vào
+      </div>
+      <input type="file" id="file" accept="image/jpeg,image/png">
+      <div class="preview" id="preview">
+        <img id="img">
+        <p id="fname"></p>
+      </div>
+
+      <button class="btn" id="extract-btn" disabled>POST /v1/extract</button>
+      <div class="status" id="status"></div>
+
+      <div class="code-label">Request mà PHR gửi đi:</div>
+      <div class="tabs">
+        <button class="tab active" data-tab="curl">curl</button>
+        <button class="tab" data-tab="js">JavaScript</button>
+        <button class="tab" data-tab="py">Python</button>
+        <button class="tab" data-tab="kt">Kotlin</button>
+      </div>
+      <div class="tab-content active" id="tab-curl"><div class="code req" id="req-curl"></div></div>
+      <div class="tab-content" id="tab-js"><div class="code req" id="req-js"></div></div>
+      <div class="tab-content" id="tab-py"><div class="code req" id="req-py"></div></div>
+      <div class="tab-content" id="tab-kt"><div class="code req" id="req-kt"></div></div>
+    </div>
+
+    <div class="arrow">→</div>
+
+    <!-- ─── OUTPUT (OCR responds to PHR) ──────── -->
+    <div class="panel out">
+      <h2>📤 Output — OCR Backend → PHR</h2>
+      <p class="sub">Backend trả JSON 7 chỉ số + request_id. PHR show cho user confirm/edit rồi đẩy lên HIS.</p>
+
+      <div id="output">
+        <div class="placeholder">Chờ ảnh từ PHR...</div>
+      </div>
+
+      <div class="code-label" style="display:none" id="raw-label">Raw JSON response body:</div>
+      <div class="code res" id="raw-response" style="display:none"></div>
+    </div>
+  </div>
+
+  <div class="health">
+    <span class="dot" id="dot-srv"></span>Server: <span id="srv">?</span>
+    &nbsp;·&nbsp; <span class="dot" id="dot-auth"></span>Auth: <span id="auth">?</span>
+    &nbsp;·&nbsp; <span class="dot" id="dot-store"></span>Storage: <span id="store">?</span>
+  </div>
+</div>
+
+<script>
+const FIELDS = ['mach','nhiet_do','huyet_ap','nhip_tho','can_nang','chieu_cao','spo2'];
+const LABEL_VN = {
+  mach: 'Mạch', nhiet_do: 'Nhiệt độ', huyet_ap: 'Huyết áp',
+  nhip_tho: 'Nhịp thở', can_nang: 'Cân nặng', chieu_cao: 'Chiều cao', spo2: 'SpO₂'
+};
+const UNITS = {
+  mach: 'bpm', nhiet_do: '°C', huyet_ap: 'mmHg',
+  nhip_tho: '/phút', can_nang: 'kg', chieu_cao: 'cm', spo2: '%'
+};
+
+let selectedFile = null;
+
+// ─── Restore key ─────────────────────────────────────────────────────────
+const apiInput = document.getElementById('apikey');
+apiInput.value = sessionStorage.getItem('ocr_api_key') || '';
+apiInput.addEventListener('input', () => { sessionStorage.setItem('ocr_api_key', apiInput.value); updateAllPreviews(); });
+
+// ─── File handling ───────────────────────────────────────────────────────
+const drop = document.getElementById('drop');
+drop.addEventListener('dragover', e => { e.preventDefault(); drop.classList.add('over'); });
+drop.addEventListener('dragleave', () => drop.classList.remove('over'));
+drop.addEventListener('drop', e => {
+  e.preventDefault(); drop.classList.remove('over');
+  handleFile(e.dataTransfer.files[0]);
+});
+document.getElementById('file').addEventListener('change', e => handleFile(e.target.files[0]));
+
+function handleFile(f) {
+  if (!f) return;
+  if (!['image/jpeg','image/png'].includes(f.type)) {
+    showStatus('Chỉ JPG/PNG', 'err'); return;
+  }
+  selectedFile = f;
+  document.getElementById('fname').textContent = `${f.name} · ${(f.size/1024).toFixed(0)} KB`;
+  const r = new FileReader();
+  r.onload = e => {
+    document.getElementById('img').src = e.target.result;
+    document.getElementById('preview').style.display = 'block';
+  };
+  r.readAsDataURL(f);
+  document.getElementById('extract-btn').disabled = false;
+  showStatus('', '');
+  updateAllPreviews();
+}
+
+// ─── Code-sample tabs ────────────────────────────────────────────────────
+document.querySelectorAll('.tab').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+    btn.classList.add('active');
+    document.getElementById('tab-' + btn.dataset.tab).classList.add('active');
+  });
+});
+
+function updateAllPreviews() {
+  const key = apiInput.value.trim();
+  const keyShort = key ? key.slice(0, 8) + '...' : '<API_KEY>';
+  const fname = selectedFile ? selectedFile.name : 'image.jpg';
+  const url = location.origin + '/v1/extract';
+
+  // curl
+  document.getElementById('req-curl').textContent =
+`curl -X POST ${url} \\
+  -H "X-API-Key: ${keyShort}" \\
+  -H "ngrok-skip-browser-warning: 1" \\
+  -F "file=@${fname}"`;
+
+  // JavaScript fetch
+  document.getElementById('req-js').textContent =
+`const fd = new FormData();
+fd.append('file', imageFile);
+
+const r = await fetch('${url}', {
+  method: 'POST',
+  headers: {
+    'X-API-Key': '${keyShort}',
+    'ngrok-skip-browser-warning': '1'
+  },
+  body: fd
+});
+const data = await r.json();
+// data = { request_id, mach, nhiet_do, huyet_ap, ... }`;
+
+  // Python requests
+  document.getElementById('req-py').textContent =
+`import requests
+
+with open('${fname}', 'rb') as f:
+    r = requests.post(
+        '${url}',
+        headers={
+            'X-API-Key': '${keyShort}',
+            'ngrok-skip-browser-warning': '1',
+        },
+        files={'file': f},
+    )
+data = r.json()
+# data = {'request_id': '...', 'mach': 75, ...}`;
+
+  // Kotlin OkHttp
+  document.getElementById('req-kt').textContent =
+`val body = MultipartBody.Builder()
+    .setType(MultipartBody.FORM)
+    .addFormDataPart("file", "${fname}",
+        imageFile.asRequestBody("image/jpeg".toMediaType()))
+    .build()
+
+val req = Request.Builder()
+    .url("${url}")
+    .addHeader("X-API-Key", "${keyShort}")
+    .addHeader("ngrok-skip-browser-warning", "1")
+    .post(body)
+    .build()
+
+client.newCall(req).execute().use { resp ->
+    val json = JSONObject(resp.body!!.string())
+    // json.getString("request_id"), json.optInt("mach"), ...
+}`;
+}
+
+// ─── Submit ──────────────────────────────────────────────────────────────
+document.getElementById('extract-btn').addEventListener('click', async () => {
+  if (!selectedFile) return;
+  const key = apiInput.value.trim();
+  if (!key) { showStatus('Cần API key', 'err'); return; }
+
+  document.getElementById('extract-btn').disabled = true;
+  showStatus('⏳ Đang xử lý...', 'loading');
+
+  const fd = new FormData();
+  fd.append('file', selectedFile);
+  const t0 = performance.now();
+  try {
+    const resp = await fetch('/v1/extract', {
+      method: 'POST',
+      headers: { 'X-API-Key': key, 'ngrok-skip-browser-warning': '1' },
+      body: fd
+    });
+    const data = await resp.json();
+    const dt = ((performance.now()-t0)/1000).toFixed(2);
+    if (!resp.ok) {
+      showStatus(`HTTP ${resp.status}`, 'err');
+      renderRaw(data);
+    } else {
+      showStatus(`✓ ${dt}s`, 'ok');
+      renderResult(data, dt);
+    }
+  } catch (e) {
+    showStatus(`Network error: ${e.message}`, 'err');
+  } finally {
+    document.getElementById('extract-btn').disabled = false;
+  }
+});
+
+function showStatus(msg, kind) {
+  const el = document.getElementById('status');
+  el.className = 'status' + (kind ? ' ' + kind : '');
+  el.textContent = msg;
+  if (!msg) el.style.display = 'none';
+}
+
+function renderResult(d, dt) {
+  const out = document.getElementById('output');
+  let html = `<div class="fields">`;
+  for (const f of FIELDS) {
+    const v = d[f];
+    if (f === 'huyet_ap') {
+      if (v && (v.tam_thu != null || v.tam_truong != null)) {
+        const sys = v.tam_thu ?? '—';
+        const dia = v.tam_truong ?? '—';
+        html += `<div class="field has bp">
+          <div class="lab">${LABEL_VN[f]}</div>
+          <div class="val">${sys}/${dia}<span class="u">mmHg</span></div>
+        </div>`;
+      } else {
+        html += `<div class="field null bp">
+          <div class="lab">${LABEL_VN[f]}</div>
+          <div class="val null">null</div>
+        </div>`;
+      }
+    } else if (v != null) {
+      html += `<div class="field has">
+        <div class="lab">${LABEL_VN[f]}</div>
+        <div class="val">${v}<span class="u">${UNITS[f]}</span></div>
+      </div>`;
+    } else {
+      html += `<div class="field null">
+        <div class="lab">${LABEL_VN[f]}</div>
+        <div class="val null">null</div>
+      </div>`;
+    }
+  }
+  html += `</div>`;
+  if (d.request_id) {
+    html += `<div class="meta">
+      <b>request_id:</b> <code>${d.request_id}</code><br>
+      <b>elapsed:</b> ${dt}s
+    </div>`;
+  }
+  out.innerHTML = html;
+  renderRaw(d);
+}
+
+function renderRaw(d) {
+  document.getElementById('raw-response').textContent = JSON.stringify(d, null, 2);
+  document.getElementById('raw-response').style.display = 'block';
+  document.getElementById('raw-label').style.display = 'block';
+}
+
+// ─── Health check ────────────────────────────────────────────────────────
+fetch('/health', { headers: { 'ngrok-skip-browser-warning': '1' } }).then(r => r.json()).then(d => {
+  document.getElementById('srv').textContent = d.version || '?';
+  document.getElementById('dot-srv').classList.add('on');
+  document.getElementById('auth').textContent = d.auth_enabled ? 'on' : 'off';
+  document.getElementById('dot-auth').classList.add(d.auth_enabled ? 'on' : 'off');
+  document.getElementById('store').textContent = d.storage_enabled ? 'on' : 'off';
+  document.getElementById('dot-store').classList.add(d.storage_enabled ? 'on' : 'off');
+}).catch(() => {
+  document.getElementById('srv').textContent = 'down';
+  document.getElementById('dot-srv').classList.add('off');
+});
+
+// initial render
+updateAllPreviews();
+</script>
+</body>
+</html>

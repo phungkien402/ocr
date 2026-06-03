@@ -1,6 +1,6 @@
 """Main entry point for OCR vital signs extraction pipeline."""
 
-import argparse, json, logging, os, sys
+import argparse, hashlib, json, logging, os, sys
 from datetime import datetime
 from pathlib import Path
 
@@ -70,20 +70,22 @@ def process_image(image_path, device="cuda:0", mode="auto"):
 
 
 async def process_image_async(image_path, device="cuda:0"):
-    filename = os.path.basename(image_path)
+    filename_hash = hashlib.sha256(os.path.basename(image_path).encode()).hexdigest()[:8]
     try:
         yolo_vitals = _try_yolo(image_path)
 
         if yolo_vitals and yolo_vitals.get("confident"):
-            logger.info("YOLO confident — skipping VLM")
-            return _build_result(filename, "", yolo_vitals)
+            logger.info("YOLO confident [img=%s] — skipping VLM", filename_hash)
+            return _build_result(os.path.basename(image_path), "", yolo_vitals)
 
         raw_img = preprocess_for_vlm(image_path)
-        raw_text = extract_vitals(raw_img)
-        return _build_result(filename, raw_text, yolo_vitals)
+        # Use async VLM call to avoid blocking the event loop
+        from .ocr_engine import extract_vitals_async
+        raw_text = await extract_vitals_async(raw_img)
+        return _build_result(os.path.basename(image_path), raw_text, yolo_vitals)
     except Exception as e:
-        logger.error("Error processing %s: %s", filename, e)
-        return _error_result(filename, str(e))
+        logger.error("Error processing [img=%s]: %s", filename_hash, type(e).__name__)
+        return _error_result(os.path.basename(image_path), str(e))
 
 
 def _build_result(filename, raw_text, yolo_vitals=None):

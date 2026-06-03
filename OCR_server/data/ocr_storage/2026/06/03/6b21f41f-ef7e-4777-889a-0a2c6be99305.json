@@ -1,0 +1,24 @@
+{
+  "request_id": "6b21f41f-ef7e-4777-889a-0a2c6be99305",
+  "timestamp": "2026-06-03T00:51:51+07:00",
+  "image_path": "2026/06/03/6b21f41f-ef7e-4777-889a-0a2c6be99305.jpg",
+  "image_sha256": "3bdded06a14ce24700eb43f1747ecedb12a1452fe235ab19aa9675c173280e01",
+  "image_bytes": 6790747,
+  "model_version": "1.2.0",
+  "processing_time_s": 2.97,
+  "extracted": {
+    "mach": 100,
+    "nhiet_do": 37.0,
+    "huyet_ap": {
+      "tam_thu": 110,
+      "tam_truong": 65
+    },
+    "nhip_tho": 50,
+    "can_nang": 55.0,
+    "chieu_cao": 160.0,
+    "spo2": 90
+  },
+  "raw_vlm_output": "Dựa vào thông tin trong ảnh, tôi có thể điền giá trị cho các chỉ số như sau:\n\n1. Mạch: 100\n2. Nhiệt độ: 37\n3. Huyết áp: 110/65\n4. Nhịp thở: 50\n5. Cân nặng: 55 kg\n6. Chiều cao: 160 cm\n7. SPO2: 90% (tuy nhiên, giá trị này không được hiển thị trong ảnh)\n\nGiá trị SPO2 được ghi là 40%, nhưng cần lưu ý rằng đây có thể là giá trị sai lệch hoặc không chính xác.",
+  "ocr_engine": "vlm",
+  "error": null
+}
