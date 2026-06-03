@@ -186,12 +186,6 @@ Xem [`OCR_server/.env.example`](OCR_server/.env.example) cho full list. Key vars
 
 Chi tiết: [`PROJECT_STATE.md`](PROJECT_STATE.md) section 10.
 
-## Roadmap
-
-- [x] **Tuần 1:** Dockerize, env config, auth, max upload size, HTTPS doc
-- [x] **Tuần 2:** Test suite parser (47) + validator (9)
-- [x] **Tuần 3:** Async httpx, sanitize logs, retry + circuit breaker (8 tests)
-- [~] **Tuần 4:** Load test ✅, audit log partial, disclaimer pháp lý pending
 
 **Pending (priority):**
 1. Benchmark accuracy trên 50-100 ảnh thật từ phòng khám
@@ -209,12 +203,3 @@ Chi tiết: [`PROJECT_STATE.md`](PROJECT_STATE.md) section 10.
 5. Vietnamese handwriting accuracy thấp với VLM 3B
 6. vLLM single GPU sequential — peak throughput cap ~0.33 req/s
 
-## License
-
-Internal project, không public license.
-
-## Liên hệ
-
-- Repo: https://github.com/phungkien402/ocr
-- Maintainer: phungkien402
-- Issue/bug: GitHub Issues hoặc Telegram (đã setup monitor alert)
