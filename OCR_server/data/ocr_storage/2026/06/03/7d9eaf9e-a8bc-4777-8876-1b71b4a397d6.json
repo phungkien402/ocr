@@ -1,0 +1,24 @@
+{
+  "request_id": "7d9eaf9e-a8bc-4777-8876-1b71b4a397d6",
+  "timestamp": "2026-06-03T14:36:50+00:00",
+  "image_path": "2026/06/03/7d9eaf9e-a8bc-4777-8876-1b71b4a397d6.png",
+  "image_sha256": "96e5cf3e81e6d228b99b274a589644acf050d2f50d84f6166bc6c7dbe7651f9a",
+  "image_bytes": 23092,
+  "model_version": "1.2.0",
+  "processing_time_s": 1.814,
+  "extracted": {
+    "mach": 78,
+    "nhiet_do": 37.2,
+    "huyet_ap": {
+      "tam_thu": 125,
+      "tam_truong": 82
+    },
+    "nhip_tho": 17,
+    "can_nang": 72.0,
+    "chieu_cao": 169.0,
+    "spo2": 95
+  },
+  "raw_vlm_output": "Dựa vào thông tin được cung cấp, tôi sẽ điền giá trị cho từng chỉ số:\n\n1. Mạch: 78\n2. Nhiệt độ: 37.2°C\n3. Huyết áp: 125/82 mmHg\n4. Nhịp thở: 17 lần/phút\n5. Cân nặng: 72.0 kg\n6. Chiều cao: 169 cm\n7. SPO2: 95%",
+  "ocr_engine": "vlm",
+  "error": null
+}
