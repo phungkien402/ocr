@@ -1,0 +1,24 @@
+{
+  "request_id": "af3eb7ec-911c-4caa-b463-b68eef75fcdd",
+  "timestamp": "2026-06-03T13:55:17+00:00",
+  "image_path": "2026/06/03/af3eb7ec-911c-4caa-b463-b68eef75fcdd.jpg",
+  "image_sha256": "4795d565bdc449c88b60eee8e09295ead88a5b6c17f97e9d211fded2862dbe1e",
+  "image_bytes": 103391,
+  "model_version": "1.2.0",
+  "processing_time_s": 0.306,
+  "extracted": {
+    "mach": 72,
+    "nhiet_do": null,
+    "huyet_ap": {
+      "tam_thu": 128,
+      "tam_truong": 78
+    },
+    "nhip_tho": null,
+    "can_nang": null,
+    "chieu_cao": null,
+    "spo2": null
+  },
+  "raw_vlm_output": null,
+  "ocr_engine": "yolo",
+  "error": null
+}

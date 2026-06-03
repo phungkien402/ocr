@@ -1,0 +1,21 @@
+{
+  "request_id": "502039a2-e020-484a-9c35-1610c5f4b02f",
+  "timestamp": "2026-06-03T13:58:59+00:00",
+  "image_path": "2026/06/03/502039a2-e020-484a-9c35-1610c5f4b02f.png",
+  "image_sha256": "3bdded06a14ce24700eb43f1747ecedb12a1452fe235ab19aa9675c173280e01",
+  "image_bytes": 6790747,
+  "model_version": "1.2.0",
+  "processing_time_s": 0.874,
+  "extracted": {
+    "mach": null,
+    "nhiet_do": null,
+    "huyet_ap": null,
+    "nhip_tho": null,
+    "can_nang": null,
+    "chieu_cao": null,
+    "spo2": null
+  },
+  "raw_vlm_output": null,
+  "ocr_engine": "vlm",
+  "error": null
+}

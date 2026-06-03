@@ -12,6 +12,12 @@ import cv2
 import httpx
 import numpy as np
 from .preprocessor import preprocess_for_vlm_array
+from .vlm_client import (
+    CircuitOpenError,
+    NonRetryableError,
+    get_breaker,
+    post_with_retry,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -104,19 +110,32 @@ def _process_response(raw_text: str) -> str:
 
 
 async def extract_vitals_async(image: np.ndarray) -> str:
-    """Async VLM call. Use this in async contexts (FastAPI handlers)."""
+    """Async VLM call với retry + circuit breaker.
+
+    Mọi error → return "". Pipeline tiếp tục với raw_text rỗng, parser trả null.
+    Never raise — caller (FastAPI handler) đã có request_id để correlate log.
+    """
     resized = _resize(image)
     img_b64 = _to_b64(resized)
     logger.info("[VLM] request %dx%d ~%d KB (model=%s)",
                 resized.shape[1], resized.shape[0],
                 len(img_b64) * 3 // 4 // 1024, VLM_MODEL)
     try:
-        async with httpx.AsyncClient(timeout=VLM_TIMEOUT) as client:
-            r = await client.post(VLM_ENDPOINT, json=_build_payload(img_b64))
-            r.raise_for_status()
-            raw = r.json()["choices"][0]["message"]["content"]
+        r = await post_with_retry(
+            VLM_ENDPOINT,
+            _build_payload(img_b64),
+            timeout_s=VLM_TIMEOUT,
+        )
+        raw = r.json()["choices"][0]["message"]["content"]
         return _process_response(raw)
+    except CircuitOpenError as e:
+        logger.warning("[VLM] %s", e)
+        return ""
+    except NonRetryableError as e:
+        logger.warning("[VLM] non-retryable: %s", e)
+        return ""
     except Exception as e:
+        # Exhausted retries hoặc parse error sau khi response OK
         logger.warning("[VLM] error: %s", type(e).__name__)
         return ""
 

@@ -29,6 +29,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 from ocr_vitals import storage
+from ocr_vitals.vlm_client import get_breaker as _get_vlm_breaker
 
 # ─── Config from env ──────────────────────────────────────────────────────────
 _VERSION           = "1.2.0"
@@ -148,6 +149,7 @@ async def health(request: Request):
         "storage_enabled":  storage.is_enabled(),
         "auth_enabled":     bool(_API_KEY),
         "rate_limit":       _RATE_LIMIT,
+        "vlm_circuit":      _get_vlm_breaker().snapshot(),
     }
 
 

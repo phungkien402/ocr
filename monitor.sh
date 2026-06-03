@@ -1,7 +1,7 @@
 #!/bin/bash
-# OCR server health monitor — alert Telegram if /health fails or vLLM down.
-# Run via cron every minute. Only alerts on state change (down→up or up→down)
-# to avoid spam.
+# OCR stack health monitor — alert Telegram if any component fails.
+# Checks: OCR API (8502), vLLM (8080), ngrok tunnel (4040 admin API).
+# Notifies only on state change (down→up or up→down) to avoid spam.
 #
 # Setup:
 #   1. chmod +x monitor.sh
@@ -10,11 +10,12 @@
 #        * * * * * /home/phungkien/OCR_PHR/monitor.sh
 
 # ─── Config ───────────────────────────────────────────────────────────────
-BOT_TOKEN="8967449057:AAHC5n3LzM-5H6aifESdpn7wFq9QSdoqegA"
-CHAT_ID="5770498222"
+BOT_TOKEN="REPLACE_WITH_BOT_TOKEN"
+CHAT_ID="REPLACE_WITH_CHAT_ID"
 
 OCR_URL="http://localhost:8502/health"
 VLM_URL="http://localhost:8080/v1/models"
+NGROK_URL="http://localhost:4040/api/tunnels"
 STATE_FILE="/tmp/ocr_monitor_state"
 HOSTNAME=$(hostname -s)
 # ──────────────────────────────────────────────────────────────────────────
@@ -27,39 +28,38 @@ notify() {
         --data-urlencode "parse_mode=Markdown" >/dev/null
 }
 
-# Check OCR server
-ocr_status="down"
-if curl -s -f -m 5 "$OCR_URL" >/dev/null 2>&1; then
-    ocr_status="up"
+check() {
+    if curl -s -f -m 5 "$1" >/dev/null 2>&1; then echo "up"; else echo "down"; fi
+}
+
+ocr_status=$(check "$OCR_URL")
+vlm_status=$(check "$VLM_URL")
+ngrok_status=$(check "$NGROK_URL")
+
+# Extract ngrok public URL if up (for visibility)
+ngrok_url=""
+if [ "$ngrok_status" = "up" ]; then
+    ngrok_url=$(curl -s -m 5 "$NGROK_URL" 2>/dev/null | \
+        python3 -c "import sys,json; d=json.load(sys.stdin); print(d['tunnels'][0]['public_url'] if d.get('tunnels') else '')" 2>/dev/null)
 fi
 
-# Check vLLM
-vlm_status="down"
-if curl -s -f -m 5 "$VLM_URL" >/dev/null 2>&1; then
-    vlm_status="up"
-fi
-
-ngrok_status="down"
-if curl -s -f -m 5 http://localhost:4040/api/tunnels >/dev/null 2>&1; then
-    ngrok_status="up"
-fi
-
-# Update combined state
 current="ocr=${ocr_status} vlm=${vlm_status} ngrok=${ngrok_status}"
-
 last=$(cat "$STATE_FILE" 2>/dev/null || echo "init")
 
-# Notify only on change
 if [ "$current" != "$last" ]; then
     if [ "$last" = "init" ]; then
-        notify "Monitor started. Current: ${current}"
-    elif [ "$ocr_status" = "down" ] || [ "$vlm_status" = "down" ] || [ "$ngrok_status" = "down" ]; then
+        msg="Monitor started. ${current}"
+        [ -n "$ngrok_url" ] && msg="${msg}"$'\n'"URL: ${ngrok_url}"
+        notify "$msg"
+    elif [[ "$current" == *"down"* ]]; then
         notify "⚠️ *DOWN*: ${current}"
     else
-        notify "✅ Recovered: ${current}"
+        msg="✅ Recovered: ${current}"
+        [ -n "$ngrok_url" ] && msg="${msg}"$'\n'"URL: ${ngrok_url}"
+        notify "$msg"
     fi
     echo "$current" > "$STATE_FILE"
 fi
 
-# Log every check (for trail), keep last 1000 lines
+# Trail log (last 1000 lines)
 { echo "$(date '+%F %T') ${current}"; tail -1000 /var/log/ocr_monitor.log 2>/dev/null; } > /tmp/.mon.tmp && mv /tmp/.mon.tmp /var/log/ocr_monitor.log 2>/dev/null
