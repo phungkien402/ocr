@@ -1,0 +1,111 @@
+# OCR HealthCare — 3 services: ocr-server (GPU) + ngrok + monitor.
+# vLLM vẫn chạy systemd trên host (port 8080). Container gọi qua host.docker.internal.
+#
+# Prereq:
+#   - Docker 20.10+ (cho host.docker.internal:host-gateway trên Linux)
+#   - NVIDIA Container Toolkit (nvidia-ctk + driver ≥ 525)
+#   - File OCR_server/.env tồn tại (xem .env.example)
+#   - File bp_detector/best.pt tồn tại (~22MB, không vào image)
+#   - Env shell: NGROK_AUTHTOKEN, TG_BOT_TOKEN, TG_CHAT_ID (hoặc trong .env top-level)
+#
+# Start:
+#   docker compose up -d
+# Logs:
+#   docker compose logs -f ocr-server
+# Stop:
+#   docker compose down
+
+services:
+
+  ocr-server:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        # Map container user → host owner của OCR_server/data/ocr_storage
+        # để write metadata JSON không bị permission denied.
+        # Default 1000 = `phungkien` thường gặp. Override:
+        #   OCR_UID=$(id -u) OCR_GID=$(id -g) docker compose build
+        OCR_UID: "${OCR_UID:-1000}"
+        OCR_GID: "${OCR_GID:-1000}"
+    image: ocr-server:latest
+    container_name: ocr-server
+    restart: unless-stopped
+    env_file:
+      - OCR_server/.env
+    environment:
+      # Override: container gọi vLLM trên host qua host-gateway
+      VLM_ENDPOINT: "http://host.docker.internal:8080/v1/chat/completions"
+      # Storage path inside container — mount tới host folder bên dưới
+      STORAGE_PATH: "/app/OCR_server/data/ocr_storage"
+    extra_hosts:
+      # Cho phép container resolve `host.docker.internal` → host gateway (Linux)
+      - "host.docker.internal:host-gateway"
+    ports:
+      - "8502:8502"
+    volumes:
+      # Persist images + metadata trên host
+      - ./OCR_server/data/ocr_storage:/app/OCR_server/data/ocr_storage
+      # YOLO model — read-only mount, không bake vào image
+      - ./bp_detector/best.pt:/app/bp_detector/best.pt:ro
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              # GPU 1 — GPU 0 dành cho vLLM systemd (theo PROJECT_STATE)
+              device_ids: ["1"]
+              capabilities: [gpu]
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8502/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    networks:
+      - ocrnet
+
+  ngrok:
+    image: ngrok/ngrok:alpine
+    container_name: ocr-ngrok
+    restart: unless-stopped
+    network_mode: host
+    depends_on:
+      ocr-server:
+        condition: service_healthy
+    environment:
+      NGROK_AUTHTOKEN: "${NGROK_AUTHTOKEN:?set NGROK_AUTHTOKEN}"
+    command: ["http", "127.0.0.1:8502", "--log=stdout"]
+    ports:
+      # Admin API 4040 — monitor đọc tunnel URL từ đây
+      - "127.0.0.1:4040:4040"
+
+  monitor:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.monitor
+    image: ocr-monitor:latest
+    container_name: ocr-monitor
+    restart: unless-stopped
+    depends_on:
+      - ocr-server
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    environment:
+      BOT_TOKEN: "${TG_BOT_TOKEN:-}"
+      CHAT_ID: "${TG_CHAT_ID:-}"
+      HOST_LABEL: "${HOST_LABEL:-ocr-docker}"
+      OCR_HOST: "ocr-server"
+      VLM_HOST: "host.docker.internal"
+      NGROK_HOST: "ngrok"
+    volumes:
+      - monitor-state:/var/lib/monitor
+    networks:
+      - ocrnet
+
+networks:
+  ocrnet:
+    driver: bridge
+
+volumes:
+  monitor-state:

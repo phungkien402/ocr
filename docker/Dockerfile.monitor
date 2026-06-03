@@ -1,0 +1,18 @@
+# monitor — chạy monitor.sh mỗi phút, alert Telegram khi state đổi.
+# Alpine nhỏ ~10MB + bash/curl/python3 ~30MB total.
+#
+# State file ở /var/lib/monitor (volume) để survive restart.
+
+FROM alpine:3.20
+
+RUN apk add --no-cache bash curl python3 tzdata \
+    && ln -sf /usr/share/zoneinfo/Asia/Ho_Chi_Minh /etc/localtime
+
+WORKDIR /app
+COPY docker/monitor.sh /app/monitor.sh
+RUN chmod +x /app/monitor.sh \
+    && mkdir -p /var/lib/monitor /var/log
+
+# Loop thay vì cron — đơn giản hơn, log ra stdout cho `docker logs`.
+# State + log persist qua volume mount.
+CMD ["sh", "-c", "while true; do /app/monitor.sh; sleep 60; done"]

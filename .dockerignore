@@ -1,0 +1,44 @@
+# Git / IDE
+.git
+.gitignore
+.idea
+.vscode
+*.iml
+
+# Python bytecode + caches
+**/__pycache__/
+**/*.pyc
+**/*.pyo
+**/.pytest_cache/
+**/pytest-cache-files-*
+
+# Tests + dev artifacts
+**/*.bak
+**/*.swp
+**/*.log
+
+# Heavy / runtime data — mount as volumes, không bake vào image
+OCR_server/data/
+bp_detector/best.pt
+bp_detector/llama.zip
+bp_detector/*.png
+bp_detector/*.jpg
+test_images/
+*.rar
+*.zip
+
+# Docs / one-off scripts không cần trong container
+DEPLOY_HTTPS.md
+DEPLOY_DOCKER.md
+PROJECT_STATE.md
+CODE_REVIEW.md
+NOTES.md
+README.md
+loadtest.py
+result.json
+Gemini_Generated_Image_*.png
+gaa.png
+
+# Local env (mounted via env_file, không bake credential vào image)
+**/.env
+.env
