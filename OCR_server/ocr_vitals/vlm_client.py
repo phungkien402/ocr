@@ -36,6 +36,8 @@ from typing import Awaitable, Callable, Optional
 
 import httpx
 
+from .obs import get_timings
+
 logger = logging.getLogger(__name__)
 
 
@@ -214,13 +216,21 @@ async def post_with_retry(
     if client_factory is None:
         client_factory = lambda: httpx.AsyncClient(timeout=timeout_s)
 
+    timings = get_timings()                    # record retry count + cb state into log
+    if timings is not None:
+        timings.add("vlm_cb_state_open", 0)    # mark có gọi VLM thật (CB closed/half-open)
+
     last_exc: Optional[BaseException] = None
+    attempts_done = 0
     for attempt in range(MAX_RETRIES + 1):
+        attempts_done = attempt + 1
         try:
             async with client_factory() as client:
                 r = await client.post(url, json=json_payload)
             if r.status_code < 400:
                 await cb.on_success()
+                if timings is not None:
+                    timings.add("vlm_attempts", attempts_done)
                 return r
             if _is_retryable_response(r):
                 # 5xx — retry
@@ -239,5 +249,7 @@ async def post_with_retry(
 
     # Exhausted retries
     await cb.on_failure()
+    if timings is not None:
+        timings.add("vlm_attempts", attempts_done)
     assert last_exc is not None
     raise last_exc

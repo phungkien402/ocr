@@ -22,14 +22,13 @@ from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
-)
-logger = logging.getLogger(__name__)
-
 from ocr_vitals import storage
+from ocr_vitals.obs import Timings, configure_logging, set_timings
 from ocr_vitals.vlm_client import get_breaker as _get_vlm_breaker
+
+# Setup dual logging (stdout text + JSON file via LOG_FILE env)
+configure_logging(os.environ.get("LOG_LEVEL", "INFO"))
+logger = logging.getLogger(__name__)
 
 # ─── Config from env ──────────────────────────────────────────────────────────
 _VERSION           = "1.2.0"
@@ -94,7 +93,9 @@ def _to_v1(result: dict) -> dict:
 async def _read_upload(file: UploadFile) -> tuple[bytes | None, str | None]:
     if file.content_type not in ("image/jpeg", "image/png", "image/jpg"):
         return None, "Only JPG and PNG images are supported."
-    data = await file.read()
+    from ocr_vitals.obs import time_phase
+    with time_phase("read_upload"):
+        data = await file.read()
     if len(data) > _MAX_UPLOAD_BYTES:
         return None, f"Image too large ({len(data)} > {_MAX_UPLOAD_BYTES} bytes)"
     return data, None
@@ -115,6 +116,32 @@ async def _run_pipeline_on_bytes(image_bytes: bytes, suffix: str):
     finally:
         try: os.unlink(tmp_path)
         except OSError: pass
+
+
+def _detected_fields(result: dict | None) -> list[str]:
+    """Trả list field name non-null. PHI-safe — KHÔNG include giá trị."""
+    if not result:
+        return []
+    vitals = result.get("vitals") or {}
+    out: list[str] = []
+    for k, v in vitals.items():
+        if k.startswith("_") or v is None:
+            continue
+        if k == "huyet_ap" and isinstance(v, dict):
+            if v.get("tam_thu")    is not None: out.append("huyet_ap.tam_thu")
+            if v.get("tam_truong") is not None: out.append("huyet_ap.tam_truong")
+        else:
+            out.append(k)
+    return out
+
+
+def _client_info(request: Request, x_api_key: str | None) -> dict:
+    """Thông tin client cho log — KHÔNG bao giờ log raw api key."""
+    return {
+        "client_ip":     get_remote_address(request),
+        "user_agent":    request.headers.get("user-agent", "")[:120],
+        "api_key_hash": (hashlib.sha256(x_api_key.encode()).hexdigest()[:8] if x_api_key else None),
+    }
 
 
 def _persist(request_id: str, image_bytes: bytes, suffix: str,
@@ -160,24 +187,66 @@ async def extract_v1(
     file: UploadFile = File(...),
     x_api_key: str | None = Header(default=None),
 ):
-    """Extract 7 vital signs from image. Returns flat JSON + request_id."""
+    """Extract 7 vital signs from image. Returns flat JSON + request_id.
+
+    Emit 1 structured log line per request (PHI-safe — field names only, no values).
+    """
     _require_api_key(x_api_key)
+
+    # Per-request observability context — phase timings sẽ được pipeline ghi vào
+    t = Timings()
+    set_timings(t)
 
     image_bytes, read_err = await _read_upload(file)
     if read_err:
+        logger.warning("[extract] request_id=- status=bad_request reason=%s", read_err,
+                       extra={"event": "extract", "status": "bad_request",
+                              "error_reason": read_err, **_client_info(request, x_api_key)})
         return JSONResponse(status_code=400,
             content={"request_id": None, **{f: None for f in _FIELDS}})
 
     suffix = ".png" if "png" in (file.content_type or "") else ".jpg"
     request_id = storage.new_request_id()
+    image_sha8 = hashlib.sha256(image_bytes).hexdigest()[:8]
+
     result, elapsed, err = await _run_pipeline_on_bytes(image_bytes, suffix)
 
-    _persist(request_id, image_bytes, suffix, result, elapsed)
+    with t.phase("persist"):
+        _persist(request_id, image_bytes, suffix, result, elapsed)
 
-    # PHI-safe log line — only ids + status, no values
-    logger.info("[extract] request_id=%s status=%s elapsed=%.2fs engine=%s",
-                request_id, "err" if err else "ok",
-                elapsed or 0, (result or {}).get("ocr_engine", "-"))
+    # ─── Build structured log payload ─────────────────────────────────
+    status = "err" if err else "ok"
+    engine = (result or {}).get("ocr_engine", "-")
+    fields_detected = _detected_fields(result)
+    cb_snapshot    = _get_vlm_breaker().snapshot()
+
+    log_extra = {
+        "event":             "extract",
+        "request_id":        request_id,
+        "status":            status,
+        "engine":            engine,
+        "elapsed_ms":        round((elapsed or 0) * 1000),
+        "timing_ms":         t.to_dict(),
+        "image_bytes":       len(image_bytes),
+        "image_sha8":        image_sha8,
+        "content_type":      file.content_type,
+        "image_filename":    file.filename,    # avoid `filename` — reserved by LogRecord
+        "fields_count":      len(fields_detected),
+        "fields_detected":   fields_detected,
+        "vlm_cb_state":      cb_snapshot["state"],
+        "vlm_cb_failures":   cb_snapshot["failure_count"],
+        "error":             err,
+        **_client_info(request, x_api_key),
+    }
+
+    # Text log (stdout) — gọn, dễ đọc
+    logger.info(
+        "[extract] request_id=%s status=%s elapsed=%dms engine=%s fields=%d/7 "
+        "image=%dB sha=%s cb=%s",
+        request_id, status, log_extra["elapsed_ms"], engine,
+        len(fields_detected), len(image_bytes), image_sha8, cb_snapshot["state"],
+        extra=log_extra,  # JSON file handler nuốt cả extra dict
+    )
 
     if err:
         return JSONResponse(status_code=500,

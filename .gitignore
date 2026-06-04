@@ -1,3 +1,10 @@
 .env
 OCR_server/.env
 OCR_server/data/
+
+# Tailscale TLS exports (do `tailscale cert` tạo ra trong working dir)
+*.ts.net.crt
+*.ts.net.key
+
+# Runtime logs (chứa client IP, request_id)
+logs/

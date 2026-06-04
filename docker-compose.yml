@@ -38,6 +38,10 @@ services:
       VLM_ENDPOINT: "http://host.docker.internal:8080/v1/chat/completions"
       # Storage path inside container — mount tới host folder bên dưới
       STORAGE_PATH: "/app/OCR_server/data/ocr_storage"
+      # Structured JSON log → file (rotating). Mount tới host log dir.
+      LOG_FILE: "/app/logs/ocr.jsonl"
+      LOG_FILE_MAX_BYTES: "52428800"     # 50MB / file
+      LOG_FILE_BACKUP_COUNT: "5"         # giữ 5 file = ~250MB max
     extra_hosts:
       # Cho phép container resolve `host.docker.internal` → host gateway (Linux)
       - "host.docker.internal:host-gateway"
@@ -46,9 +50,12 @@ services:
     volumes:
       # Persist images + metadata trên host
       - ./OCR_server/data/ocr_storage:/app/OCR_server/data/ocr_storage
-      - ./OCR_server/static:/app/OCR_server/static:ro
       # YOLO model — read-only mount, không bake vào image
       - ./bp_detector/best.pt:/app/bp_detector/best.pt:ro
+      # Static HTML — mount để sửa UI là F5 thấy ngay, không cần rebuild
+      - ./OCR_server/static:/app/OCR_server/static:ro
+      # JSON log file — host visible cho `tail -f` + `jq` query
+      - ./logs:/app/logs
     deploy:
       resources:
         reservations:
@@ -70,6 +77,11 @@ services:
     image: ngrok/ngrok:alpine
     container_name: ocr-ngrok
     restart: unless-stopped
+    # network_mode: host — bridge default bị firewall server block outbound
+    # (network unreachable kể cả khi DNS = 1.1.1.1). Host network giống systemd
+    # cũ, ngrok agent reach connect.ngrok-agent.com bình thường.
+    # Trade-off: ngrok thấy 127.0.0.1, ocr-server cũng phải expose 8502 ra host
+    # (compose bridge map port -> 0.0.0.0:8502, host gọi qua 127.0.0.1:8502 OK).
     network_mode: host
     depends_on:
       ocr-server:
@@ -77,9 +89,6 @@ services:
     environment:
       NGROK_AUTHTOKEN: "${NGROK_AUTHTOKEN:?set NGROK_AUTHTOKEN}"
     command: ["http", "127.0.0.1:8502", "--log=stdout"]
-    ports:
-      # Admin API 4040 — monitor đọc tunnel URL từ đây
-      - "127.0.0.1:4040:4040"
 
   monitor:
     build:

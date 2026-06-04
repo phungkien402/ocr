@@ -194,17 +194,60 @@ PHR báo lỗi với `request_id`:
 ```bash
 REQ_ID="787ed55d-39cc-42c6-b841-41837130f95d"
 
-# 1. Tìm log line
+# 1. Tìm log line trong stdout (plain text)
 docker compose logs ocr-server | grep $REQ_ID
 
-# 2. Tìm metadata + image trên disk
+# 2. Tìm log line trong JSON file (đầy đủ thông tin hơn)
+grep $REQ_ID logs/ocr.jsonl | jq
+
+# 3. Tìm metadata + image trên disk
 find OCR_server/data/ocr_storage/ -name "$REQ_ID*"
 
-# 3. Inspect metadata
+# 4. Inspect metadata
 cat OCR_server/data/ocr_storage/2026/06/03/$REQ_ID.json | python3 -m json.tool
 
-# 4. Xem ảnh gốc
+# 5. Xem ảnh gốc
 display OCR_server/data/ocr_storage/2026/06/03/$REQ_ID.jpg  # hoặc copy về local
+```
+
+### Query JSON log với jq
+
+File `logs/ocr.jsonl` chứa 1 JSON / dòng với full info per request: timing per phase, client IP, user agent, image size, fields detected, CB state. Một số query useful:
+
+```bash
+LOG=logs/ocr.jsonl
+
+# Số request theo status hôm nay
+jq -r 'select(.event=="extract") | .status' $LOG | sort | uniq -c
+
+# Per-engine breakdown (yolo / vlm / yolo+vlm)
+jq -r 'select(.event=="extract") | .engine' $LOG | sort | uniq -c
+
+# Latency p50 / p95 / p99 (cần numerator)
+jq -s 'map(select(.event=="extract") | .elapsed_ms) | sort
+  | {p50: .[length/2|floor], p95: .[length*0.95|floor], p99: .[length*0.99|floor], n: length}' $LOG
+
+# Average per-phase timing
+jq -s 'map(select(.event=="extract") | .timing_ms) | reduce .[] as $t ({};
+  reduce ($t | keys[]) as $k (.; .[$k] += $t[$k]))' $LOG
+
+# Top client IP
+jq -r 'select(.event=="extract") | .client_ip' $LOG | sort | uniq -c | sort -rn | head
+
+# Top user agent (which PHR client version)
+jq -r 'select(.event=="extract") | .user_agent' $LOG | sort | uniq -c | sort -rn | head
+
+# Field detection rate (fields nào hay được detect)
+jq -s 'map(select(.event=="extract") | .fields_detected[]) | reduce .[] as $f ({}; .[$f] += 1)' $LOG
+
+# Tìm request có CB state = open (lúc vLLM down)
+jq 'select(.event=="extract" and .vlm_cb_state=="open")' $LOG
+
+# Tìm request fail (status=err)
+jq 'select(.event=="extract" and .status=="err")' $LOG
+
+# Tail real-time
+tail -f $LOG | jq -c '{ts, request_id, status, elapsed_ms, engine, fields_count}'
 ```
 
 ### Filter log theo loại

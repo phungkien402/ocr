@@ -5,6 +5,7 @@ from datetime import datetime
 from pathlib import Path
 
 from .config import DEVICE
+from .obs import time_phase
 from .ocr_engine import extract_vitals, OLLAMA_MODEL
 from .parser import parse_vitals
 from .preprocessor import preprocess_for_vlm
@@ -72,17 +73,21 @@ def process_image(image_path, device="cuda:0", mode="auto"):
 async def process_image_async(image_path, device="cuda:0"):
     filename_hash = hashlib.sha256(os.path.basename(image_path).encode()).hexdigest()[:8]
     try:
-        yolo_vitals = _try_yolo(image_path)
+        with time_phase("yolo"):
+            yolo_vitals = _try_yolo(image_path)
 
         if yolo_vitals and yolo_vitals.get("confident"):
             logger.info("YOLO confident [img=%s] — skipping VLM", filename_hash)
-            return _build_result(os.path.basename(image_path), "", yolo_vitals)
+            with time_phase("build_result"):
+                return _build_result(os.path.basename(image_path), "", yolo_vitals)
 
-        raw_img = preprocess_for_vlm(image_path)
-        # Use async VLM call to avoid blocking the event loop
+        with time_phase("preprocess"):
+            raw_img = preprocess_for_vlm(image_path)
         from .ocr_engine import extract_vitals_async
-        raw_text = await extract_vitals_async(raw_img)
-        return _build_result(os.path.basename(image_path), raw_text, yolo_vitals)
+        with time_phase("vlm"):
+            raw_text = await extract_vitals_async(raw_img)
+        with time_phase("build_result"):
+            return _build_result(os.path.basename(image_path), raw_text, yolo_vitals)
     except Exception as e:
         logger.error("Error processing [img=%s]: %s", filename_hash, type(e).__name__)
         return _error_result(os.path.basename(image_path), str(e))
@@ -90,7 +95,8 @@ async def process_image_async(image_path, device="cuda:0"):
 
 def _build_result(filename, raw_text, yolo_vitals=None):
     from .config import VITALS_INFO
-    vitals = parse_vitals(raw_text)
+    with time_phase("parser"):
+        vitals = parse_vitals(raw_text)
     units = vitals.pop("_units", None)
     detected_device = vitals.pop("_device", "unknown")
 

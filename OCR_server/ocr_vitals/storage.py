@@ -20,6 +20,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
+from .obs import time_phase
+
 logger = logging.getLogger(__name__)
 
 _STORAGE_ROOT: Optional[Path] = None
@@ -74,9 +76,10 @@ def save_image(request_id: str, image_bytes: bytes, suffix: str = ".jpg") -> Opt
         return None
     ts = datetime.now()
     try:
-        dir_ = _date_dir(root, ts)
-        fname = f"{request_id}{suffix}"
-        (dir_ / fname).write_bytes(image_bytes)
+        with time_phase("storage_image"):
+            dir_ = _date_dir(root, ts)
+            fname = f"{request_id}{suffix}"
+            (dir_ / fname).write_bytes(image_bytes)
         return f"{ts:%Y/%m/%d}/{fname}"
     except OSError as e:
         logger.warning("save_image failed for %s: %s", request_id, e)
@@ -94,11 +97,12 @@ def save_metadata(request_id: str, metadata: dict) -> None:
     except ValueError:
         ts = datetime.now()
     try:
-        dir_ = _date_dir(root, ts)
-        (dir_ / f"{request_id}.json").write_text(
-            json.dumps(metadata, ensure_ascii=False, indent=2),
-            encoding="utf-8",
-        )
+        with time_phase("storage_metadata"):
+            dir_ = _date_dir(root, ts)
+            (dir_ / f"{request_id}.json").write_text(
+                json.dumps(metadata, ensure_ascii=False, indent=2),
+                encoding="utf-8",
+            )
     except OSError as e:
         logger.warning("save_metadata failed for %s: %s", request_id, e)
 
