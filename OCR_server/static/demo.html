@@ -3,20 +3,31 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>OCR Demo — PHR ↔ OCR Backend</title>
+<title>OCR Vital Signs API</title>
 <style>
 * { box-sizing: border-box; margin: 0; padding: 0; }
 body { font-family: system-ui, -apple-system, sans-serif; background: #0f172a; color: #e2e8f0; padding: 1.2rem; min-height: 100vh; }
 .wrap { max-width: 1300px; margin: 0 auto; }
-.title { text-align: center; margin-bottom: 1.2rem; }
-.title h1 { font-size: 1.5rem; font-weight: 700; }
-.title p { font-size: .85rem; color: #64748b; margin-top: .3rem; }
 
+.header { display: flex; justify-content: space-between; align-items: center; padding-bottom: 1rem; border-bottom: 1px solid #1e293b; margin-bottom: 1.2rem; }
+.header h1 { font-size: 1.1rem; font-weight: 600; color: #f1f5f9; }
+.header h1 code { background: #1e293b; padding: 2px 8px; border-radius: 4px; font-family: ui-monospace, monospace; font-size: .9rem; color: #93c5fd; }
+.toplinks { font-size: .75rem; }
+.toplinks a { color: #60a5fa; text-decoration: none; margin-left: 1rem; }
+.toplinks a:hover { text-decoration: underline; }
+
+.maintabs { display: flex; gap: .3rem; margin-bottom: 1rem; }
+.maintab { padding: .5rem 1rem; font-size: .82rem; background: #1e293b; color: #94a3b8; border: 1px solid #334155; border-radius: 6px 6px 0 0; cursor: pointer; font-family: inherit; border-bottom: none; }
+.maintab.active { background: #0f172a; color: #f1f5f9; border-color: #475569; border-bottom: 1px solid #0f172a; position: relative; top: 1px; }
+
+.section { display: none; }
+.section.active { display: block; }
+
+/* ─── Demo flow ────────────────────────────────────────────────── */
 .flow { display: grid; grid-template-columns: 1fr auto 1fr; gap: 1rem; align-items: start; }
 @media (max-width: 900px) { .flow { grid-template-columns: 1fr; } .arrow { display: none !important; } }
 .panel { background: #1e293b; border-radius: 12px; padding: 1.3rem; min-height: 550px; display: flex; flex-direction: column; }
-.panel h2 { font-size: .82rem; text-transform: uppercase; letter-spacing: .08em; margin-bottom: .3rem; }
-.panel .sub { font-size: .72rem; color: #64748b; margin-bottom: 1rem; }
+.panel h2 { font-size: .82rem; text-transform: uppercase; letter-spacing: .08em; margin-bottom: 1rem; }
 .panel.in h2 { color: #60a5fa; }
 .panel.out h2 { color: #34d399; }
 .arrow { font-size: 2rem; color: #475569; align-self: center; padding: 0 .3rem; user-select: none; }
@@ -73,70 +84,243 @@ input[type=file] { display: none; }
 .tab.active { background: #334155; color: #e2e8f0; border-color: #475569; }
 .tab-content { display: none; }
 .tab-content.active { display: block; }
+
+/* ─── Docs section ─────────────────────────────────────────────── */
+.docs { max-width: 920px; margin: 0 auto; background: #1e293b; border-radius: 12px; padding: 2rem; }
+.docs h3 { font-size: 1rem; color: #f1f5f9; margin-top: 1.8rem; margin-bottom: .6rem; padding-bottom: .4rem; border-bottom: 1px solid #334155; }
+.docs h3:first-child { margin-top: 0; }
+.docs h4 { font-size: .82rem; color: #cbd5e1; margin-top: 1rem; margin-bottom: .4rem; }
+.docs p { font-size: .85rem; line-height: 1.6; color: #cbd5e1; margin-bottom: .6rem; }
+.docs ul, .docs ol { margin-left: 1.4rem; font-size: .85rem; line-height: 1.7; color: #cbd5e1; }
+.docs li { margin-bottom: .3rem; }
+.docs code { background: #0f172a; padding: 2px 6px; border-radius: 3px; font-family: ui-monospace, monospace; font-size: .8rem; color: #93c5fd; }
+.docs pre { background: #0f172a; border-radius: 6px; padding: .9rem 1rem; margin: .6rem 0 1rem; overflow-x: auto; border-left: 3px solid #475569; }
+.docs pre code { background: transparent; padding: 0; font-size: .78rem; line-height: 1.55; color: #cbd5e1; }
+.docs table { width: 100%; border-collapse: collapse; margin: .6rem 0 1rem; font-size: .82rem; }
+.docs th, .docs td { padding: .5rem .7rem; text-align: left; border-bottom: 1px solid #334155; vertical-align: top; }
+.docs th { color: #94a3b8; font-weight: 600; background: #0f172a; font-size: .75rem; text-transform: uppercase; letter-spacing: .04em; }
+.docs td code { font-size: .78rem; }
+.docs .method { display: inline-block; padding: 2px 8px; border-radius: 3px; font-family: ui-monospace, monospace; font-size: .72rem; font-weight: 700; margin-right: .4rem; }
+.docs .method.post { background: #1e3a5f; color: #93c5fd; }
+.docs .method.get { background: #064e3b; color: #6ee7b7; }
+.docs .endpoint { display: flex; align-items: center; padding: .55rem .8rem; background: #0f172a; border-radius: 6px; margin: .4rem 0; font-family: ui-monospace, monospace; font-size: .85rem; color: #e2e8f0; }
+.docs .badge { display: inline-block; padding: 1px 6px; border-radius: 3px; font-size: .68rem; font-weight: 600; margin-left: .4rem; }
+.docs .badge.required { background: #7f1d1d; color: #fca5a5; }
+.docs .badge.optional { background: #334155; color: #94a3b8; }
+.docs .note { background: #1e3a5f; border-left: 3px solid #3b82f6; padding: .7rem 1rem; border-radius: 4px; margin: .6rem 0; font-size: .82rem; color: #93c5fd; }
+.docs .warn { background: #422006; border-left: 3px solid #f59e0b; padding: .7rem 1rem; border-radius: 4px; margin: .6rem 0; font-size: .82rem; color: #fbbf24; }
 </style>
 </head>
 <body>
 <div class="wrap">
-  <div class="title">
-    <h1>OCR Demo — PHR ↔ OCR Backend</h1>
-    <p>Input: ảnh từ app PHR · Output: JSON 7 chỉ số trả về PHR</p>
-  </div>
-
-  <div class="flow">
-    <!-- ─── INPUT (PHR sends) ──────────────────── -->
-    <div class="panel in">
-      <h2>📥 Input — PHR → OCR Backend</h2>
-      <p class="sub">App PHR mobile gửi ảnh + API key. Backend nhận POST /v1/extract.</p>
-
-      <label>API Key (header X-API-Key)</label>
-      <input type="password" id="apikey" placeholder="paste OCR_API_KEY..." autocomplete="off">
-
-      <label>Ảnh thiết bị / phiếu kết quả</label>
-      <div class="drop" id="drop" onclick="document.getElementById('file').click()">
-        📷 Click hoặc kéo ảnh vào
-      </div>
-      <input type="file" id="file" accept="image/jpeg,image/png">
-      <div class="preview" id="preview">
-        <img id="img">
-        <p id="fname"></p>
-      </div>
-
-      <button class="btn" id="extract-btn" disabled>POST /v1/extract</button>
-      <div class="status" id="status"></div>
-
-      <div class="code-label">Request mà PHR gửi đi:</div>
-      <div class="tabs">
-        <button class="tab active" data-tab="curl">curl</button>
-        <button class="tab" data-tab="js">JavaScript</button>
-        <button class="tab" data-tab="py">Python</button>
-        <button class="tab" data-tab="kt">Kotlin</button>
-      </div>
-      <div class="tab-content active" id="tab-curl"><div class="code req" id="req-curl"></div></div>
-      <div class="tab-content" id="tab-js"><div class="code req" id="req-js"></div></div>
-      <div class="tab-content" id="tab-py"><div class="code req" id="req-py"></div></div>
-      <div class="tab-content" id="tab-kt"><div class="code req" id="req-kt"></div></div>
-    </div>
-
-    <div class="arrow">→</div>
-
-    <!-- ─── OUTPUT (OCR responds to PHR) ──────── -->
-    <div class="panel out">
-      <h2>📤 Output — OCR Backend → PHR</h2>
-      <p class="sub">Backend trả JSON 7 chỉ số + request_id. PHR show cho user confirm/edit rồi đẩy lên HIS.</p>
-
-      <div id="output">
-        <div class="placeholder">Chờ ảnh từ PHR...</div>
-      </div>
-
-      <div class="code-label" style="display:none" id="raw-label">Raw JSON response body:</div>
-      <div class="code res" id="raw-response" style="display:none"></div>
+  <div class="header">
+    <h1><code>POST /v1/extract</code> — OCR Vital Signs</h1>
+    <div class="toplinks">
+      <a href="/health" target="_blank">/health</a>
+      <a href="/test" target="_blank">/test</a>
+      <a href="https://github.com/phungkien402/ocr/tree/sub_main" target="_blank">github</a>
     </div>
   </div>
 
-  <div class="health">
-    <span class="dot" id="dot-srv"></span>Server: <span id="srv">?</span>
-    &nbsp;·&nbsp; <span class="dot" id="dot-auth"></span>Auth: <span id="auth">?</span>
-    &nbsp;·&nbsp; <span class="dot" id="dot-store"></span>Storage: <span id="store">?</span>
+  <div class="maintabs">
+    <button class="maintab active" data-section="demo">Try it</button>
+    <button class="maintab" data-section="docs">Docs</button>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════════════════
+       SECTION 1 — DEMO (try the API)
+       ═══════════════════════════════════════════════════════════════ -->
+  <div class="section active" id="section-demo">
+    <div class="flow">
+      <div class="panel in">
+        <h2>Request</h2>
+
+        <label>API Key (header X-API-Key)</label>
+        <input type="password" id="apikey" placeholder="paste OCR_API_KEY..." autocomplete="off">
+
+        <label>Ảnh thiết bị / phiếu kết quả</label>
+        <div class="drop" id="drop" onclick="document.getElementById('file').click()">
+          Click hoặc kéo ảnh vào (JPG/PNG ≤10MB)
+        </div>
+        <input type="file" id="file" accept="image/jpeg,image/png">
+        <div class="preview" id="preview">
+          <img id="img">
+          <p id="fname"></p>
+        </div>
+
+        <button class="btn" id="extract-btn" disabled>Gửi POST /v1/extract</button>
+        <div class="status" id="status"></div>
+
+        <div class="code-label">Sample request code:</div>
+        <div class="tabs">
+          <button class="tab active" data-tab="curl">curl</button>
+          <button class="tab" data-tab="js">JavaScript</button>
+          <button class="tab" data-tab="py">Python</button>
+          <button class="tab" data-tab="kt">Kotlin</button>
+        </div>
+        <div class="tab-content active" id="tab-curl"><div class="code req" id="req-curl"></div></div>
+        <div class="tab-content" id="tab-js"><div class="code req" id="req-js"></div></div>
+        <div class="tab-content" id="tab-py"><div class="code req" id="req-py"></div></div>
+        <div class="tab-content" id="tab-kt"><div class="code req" id="req-kt"></div></div>
+      </div>
+
+      <div class="arrow">→</div>
+
+      <div class="panel out">
+        <h2>Response</h2>
+
+        <div id="output">
+          <div class="placeholder">Gửi ảnh để xem kết quả</div>
+        </div>
+
+        <div class="code-label" style="display:none" id="raw-label">Raw JSON:</div>
+        <div class="code res" id="raw-response" style="display:none"></div>
+      </div>
+    </div>
+
+    <div class="health">
+      <span class="dot" id="dot-srv"></span>Server: <span id="srv">?</span>
+      &nbsp;·&nbsp; <span class="dot" id="dot-auth"></span>Auth: <span id="auth">?</span>
+      &nbsp;·&nbsp; <span class="dot" id="dot-store"></span>Storage: <span id="store">?</span>
+      &nbsp;·&nbsp; VLM circuit: <span id="cb">?</span>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════════════════
+       SECTION 2 — DOCS (API reference)
+       ═══════════════════════════════════════════════════════════════ -->
+  <div class="section" id="section-docs">
+    <div class="docs">
+
+      <h3>Overview</h3>
+      <p>API trích xuất 7 chỉ số sinh tồn (mạch, nhiệt độ, huyết áp, nhịp thở, cân nặng, chiều cao, SpO₂) từ ảnh thiết bị y tế hoặc phiếu kết quả viết tay. Pipeline lai YOLO (BP monitor, ~0.4s) + Qwen2.5-VL fallback (~3s).</p>
+      <div class="note">
+        <strong>HITL bắt buộc:</strong> client KHÔNG được auto-submit response về EMR. Mọi trường có thể <code>null</code> — phải cho bác sĩ xác nhận hoặc gõ tay trước khi ghi hồ sơ.
+      </div>
+
+      <h3>Endpoints</h3>
+      <div class="endpoint"><span class="method post">POST</span> /v1/extract</div>
+      <p>Endpoint chính. Yêu cầu auth.</p>
+
+      <div class="endpoint"><span class="method get">GET</span> /health</div>
+      <p>Public, không auth. Trả status server + VLM circuit breaker state.</p>
+
+      <div class="endpoint"><span class="method get">GET</span> /test</div>
+      <p>UI test tối giản cho <code>/v1/extract</code>.</p>
+
+      <div class="endpoint"><span class="method post">POST</span> /process</div>
+      <p>Legacy debug endpoint — full internal result (raw VLM output, debug steps). Dev only.</p>
+
+      <h3>Authentication</h3>
+      <p>Mọi request đến <code>/v1/extract</code> phải có header <code>X-API-Key</code> trùng giá trị <code>OCR_API_KEY</code> trên server.</p>
+      <pre><code>X-API-Key: 5f3ef42717fa18c254a9dbe5da619d9ac13c1d289f5adda3d2f6af700e145d12</code></pre>
+      <div class="warn">
+        <strong>Bảo mật:</strong> lưu key trong secure storage (Android Keystore / iOS Keychain), không hardcode trong code. KHÔNG commit lên git. KHÔNG log raw value.
+      </div>
+
+      <h3>Request</h3>
+      <table>
+        <tr><th>Field</th><th>Type</th><th>Required</th><th>Note</th></tr>
+        <tr><td><code>Content-Type</code></td><td>header</td><td><span class="badge required">required</span></td><td><code>multipart/form-data</code></td></tr>
+        <tr><td><code>X-API-Key</code></td><td>header</td><td><span class="badge required">required</span></td><td>64-hex token</td></tr>
+        <tr><td><code>ngrok-skip-browser-warning</code></td><td>header</td><td><span class="badge optional">optional</span></td><td>Bỏ qua warning page nếu qua ngrok</td></tr>
+        <tr><td><code>file</code></td><td>multipart field</td><td><span class="badge required">required</span></td><td>JPG hoặc PNG, ≤10MB</td></tr>
+      </table>
+
+      <h4>Sample curl</h4>
+      <pre><code>curl -X POST https://&lt;endpoint&gt;/v1/extract \
+  -H "X-API-Key: $OCR_API_KEY" \
+  -F "file=@vitals.jpg"</code></pre>
+
+      <h3>Response 200</h3>
+      <pre><code>{
+  "request_id": "787ed55d-39cc-42c6-b841-41837130f95d",
+  "mach": 70,
+  "nhiet_do": 36.5,
+  "huyet_ap": { "tam_thu": 118, "tam_truong": 78 },
+  "nhip_tho": 16,
+  "can_nang": 67,
+  "chieu_cao": 170,
+  "spo2": 98
+}</code></pre>
+
+      <h4>Field schema</h4>
+      <table>
+        <tr><th>Field</th><th>Type</th><th>Đơn vị</th><th>Range hợp lý</th><th>Note</th></tr>
+        <tr><td><code>request_id</code></td><td>string (UUID v4)</td><td>—</td><td>—</td><td>Dùng để correlate log + audit</td></tr>
+        <tr><td><code>mach</code></td><td>int | null</td><td>bpm</td><td>30–220</td><td>Mạch / heart rate</td></tr>
+        <tr><td><code>nhiet_do</code></td><td>float | null</td><td>°C</td><td>35–42</td><td>Nhiệt độ</td></tr>
+        <tr><td><code>huyet_ap.tam_thu</code></td><td>int | null</td><td>mmHg</td><td>60–250</td><td>Systolic</td></tr>
+        <tr><td><code>huyet_ap.tam_truong</code></td><td>int | null</td><td>mmHg</td><td>30–150</td><td>Diastolic</td></tr>
+        <tr><td><code>huyet_ap</code></td><td>object | null</td><td>—</td><td>—</td><td>null nếu cả 2 sub-field đều thiếu</td></tr>
+        <tr><td><code>nhip_tho</code></td><td>int | null</td><td>/phút</td><td>—</td><td>Nhịp thở</td></tr>
+        <tr><td><code>can_nang</code></td><td>float | null</td><td>kg</td><td>—</td><td>Cân nặng</td></tr>
+        <tr><td><code>chieu_cao</code></td><td>float | null</td><td>cm</td><td>—</td><td>Chiều cao</td></tr>
+        <tr><td><code>spo2</code></td><td>int | null</td><td>%</td><td>70–100</td><td>SpO₂</td></tr>
+      </table>
+      <p>Mọi field <strong>có thể là <code>null</code></strong> nếu pipeline không phát hiện được. Client phải xử lý null an toàn.</p>
+
+      <h3>Error codes</h3>
+      <table>
+        <tr><th>Status</th><th>Ý nghĩa</th><th>Action client</th></tr>
+        <tr><td><code>400</code></td><td>File sai format (không JPG/PNG) hoặc quá lớn (>10MB)</td><td>Compress / convert rồi retry</td></tr>
+        <tr><td><code>401</code></td><td>API key sai / thiếu</td><td>Check config, không retry</td></tr>
+        <tr><td><code>429</code></td><td>Rate limit 300/phút mỗi key</td><td>Backoff exponential rồi retry</td></tr>
+        <tr><td><code>500</code></td><td>Pipeline crash bất ngờ</td><td>Hiện form trống cho bác sĩ gõ tay, log <code>request_id</code></td></tr>
+      </table>
+
+      <h3>Behavior chi tiết</h3>
+
+      <h4>Pipeline ưu tiên</h4>
+      <ol>
+        <li><strong>YOLO fast path</strong> (~0.4s): nếu ảnh là BP monitor và detect đủ 3 giá trị SYS/DIA/PUL → trả luôn, không gọi VLM.</li>
+        <li><strong>VLM fallback</strong> (~3s): các ảnh khác đi qua Qwen2.5-VL-3B. Có retry tự động (2 lần) + circuit breaker.</li>
+      </ol>
+
+      <h4>VLM circuit breaker</h4>
+      <p>Khi vLLM crash, sau 5 consecutive failures circuit chuyển <code>OPEN</code> trong 60s — request mới trả null vitals ngay (~10ms) thay vì đợi timeout đầy đủ. State expose qua <code>/health</code>.</p>
+
+      <h4>Rate limit</h4>
+      <p>300 request / phút mỗi API key. Khi vượt → 429. Client BẮT BUỘC backoff trước khi retry.</p>
+
+      <h4>Image size</h4>
+      <p>Hard limit 10MB. Mobile client nên compress xuống ≤1MB trước upload (JPEG q85) để giảm latency upload + bandwidth.</p>
+
+      <h3>Best practices cho PHR client</h3>
+      <ol>
+        <li><strong>Setup screen</strong> lưu <code>endpoint</code> + <code>api_key</code> vào secure storage 1 lần. Bác sĩ không gõ tay từng request.</li>
+        <li><strong>Compress ảnh</strong> ≤1MB JPEG q85 trước khi upload.</li>
+        <li><strong>HITL form</strong> prefill từ response, trường null để trống cho bác sĩ điền. Nút "Xác nhận" mới push EMR.</li>
+        <li><strong>Error handling:</strong>
+          <ul>
+            <li>401 → check config, không loop retry</li>
+            <li>429 → backoff 5s, 10s, 20s...</li>
+            <li>500/network → hiện form trống, không block UI</li>
+          </ul>
+        </li>
+        <li><strong>Lưu <code>request_id</code></strong> cùng record bệnh án để trace ngược về ảnh gốc trên server nếu cần audit.</li>
+      </ol>
+
+      <h3>/health response</h3>
+      <pre><code>{
+  "status": "ok",
+  "version": "1.2.0",
+  "storage_enabled": true,
+  "auth_enabled": true,
+  "rate_limit": "300/minute",
+  "vlm_circuit": {
+    "state": "closed",
+    "failure_count": 0,
+    "threshold": 5,
+    "cooldown_s": 60,
+    "opened_at_ago": null
+  }
+}</code></pre>
+
+      <h3>Liên hệ</h3>
+      <p>Issue / bug: GitHub Issues hoặc Telegram. Bug stack trace gồm <code>request_id</code> để dev trace nhanh.</p>
+
+    </div>
   </div>
 </div>
 
@@ -152,6 +336,16 @@ const UNITS = {
 };
 
 let selectedFile = null;
+
+// ─── Main tabs ────────────────────────────────────────────────────────────
+document.querySelectorAll('.maintab').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.maintab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
+    btn.classList.add('active');
+    document.getElementById('section-' + btn.dataset.section).classList.add('active');
+  });
+});
 
 // ─── Restore key ─────────────────────────────────────────────────────────
 const apiInput = document.getElementById('apikey');
@@ -202,46 +396,35 @@ function updateAllPreviews() {
   const fname = selectedFile ? selectedFile.name : 'image.jpg';
   const url = location.origin + '/v1/extract';
 
-  // curl
   document.getElementById('req-curl').textContent =
 `curl -X POST ${url} \\
   -H "X-API-Key: ${keyShort}" \\
-  -H "ngrok-skip-browser-warning: 1" \\
   -F "file=@${fname}"`;
 
-  // JavaScript fetch
   document.getElementById('req-js').textContent =
 `const fd = new FormData();
 fd.append('file', imageFile);
 
 const r = await fetch('${url}', {
   method: 'POST',
-  headers: {
-    'X-API-Key': '${keyShort}',
-    'ngrok-skip-browser-warning': '1'
-  },
+  headers: { 'X-API-Key': '${keyShort}' },
   body: fd
 });
 const data = await r.json();
 // data = { request_id, mach, nhiet_do, huyet_ap, ... }`;
 
-  // Python requests
   document.getElementById('req-py').textContent =
 `import requests
 
 with open('${fname}', 'rb') as f:
     r = requests.post(
         '${url}',
-        headers={
-            'X-API-Key': '${keyShort}',
-            'ngrok-skip-browser-warning': '1',
-        },
+        headers={'X-API-Key': '${keyShort}'},
         files={'file': f},
     )
 data = r.json()
 # data = {'request_id': '...', 'mach': 75, ...}`;
 
-  // Kotlin OkHttp
   document.getElementById('req-kt').textContent =
 `val body = MultipartBody.Builder()
     .setType(MultipartBody.FORM)
@@ -252,7 +435,6 @@ data = r.json()
 val req = Request.Builder()
     .url("${url}")
     .addHeader("X-API-Key", "${keyShort}")
-    .addHeader("ngrok-skip-browser-warning", "1")
     .post(body)
     .build()
 
@@ -269,7 +451,7 @@ document.getElementById('extract-btn').addEventListener('click', async () => {
   if (!key) { showStatus('Cần API key', 'err'); return; }
 
   document.getElementById('extract-btn').disabled = true;
-  showStatus('⏳ Đang xử lý...', 'loading');
+  showStatus('Đang xử lý...', 'loading');
 
   const fd = new FormData();
   fd.append('file', selectedFile);
@@ -286,7 +468,7 @@ document.getElementById('extract-btn').addEventListener('click', async () => {
       showStatus(`HTTP ${resp.status}`, 'err');
       renderRaw(data);
     } else {
-      showStatus(`✓ ${dt}s`, 'ok');
+      showStatus(`${dt}s`, 'ok');
       renderResult(data, dt);
     }
   } catch (e) {
@@ -359,6 +541,11 @@ fetch('/health', { headers: { 'ngrok-skip-browser-warning': '1' } }).then(r => r
   document.getElementById('dot-auth').classList.add(d.auth_enabled ? 'on' : 'off');
   document.getElementById('store').textContent = d.storage_enabled ? 'on' : 'off';
   document.getElementById('dot-store').classList.add(d.storage_enabled ? 'on' : 'off');
+  if (d.vlm_circuit) {
+    document.getElementById('cb').textContent = d.vlm_circuit.state;
+  } else {
+    document.getElementById('cb').textContent = 'n/a';
+  }
 }).catch(() => {
   document.getElementById('srv').textContent = 'down';
   document.getElementById('dot-srv').classList.add('off');

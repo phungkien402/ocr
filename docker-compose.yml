@@ -46,6 +46,7 @@ services:
     volumes:
       # Persist images + metadata trên host
       - ./OCR_server/data/ocr_storage:/app/OCR_server/data/ocr_storage
+      - ./OCR_server/static:/app/OCR_server/static:ro
       # YOLO model — read-only mount, không bake vào image
       - ./bp_detector/best.pt:/app/bp_detector/best.pt:ro
     deploy:
