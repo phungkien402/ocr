@@ -216,10 +216,7 @@ async def post_with_retry(
     if client_factory is None:
         client_factory = lambda: httpx.AsyncClient(timeout=timeout_s)
 
-    timings = get_timings()                    # record retry count + cb state into log
-    if timings is not None:
-        timings.add("vlm_cb_state_open", 0)    # mark có gọi VLM thật (CB closed/half-open)
-
+    timings = get_timings()
     last_exc: Optional[BaseException] = None
     attempts_done = 0
     for attempt in range(MAX_RETRIES + 1):
@@ -229,8 +226,9 @@ async def post_with_retry(
                 r = await client.post(url, json=json_payload)
             if r.status_code < 400:
                 await cb.on_success()
-                if timings is not None:
-                    timings.add("vlm_attempts", attempts_done)
+                # NOTE: vlm_attempts count đẩy vào web_app log qua side-channel,
+                # KHÔNG add vào Timings (Timings.to_dict() nhân 1000 cho ms).
+                # web_app sẽ đọc snapshot CB + tự tracking nếu cần count chi tiết.
                 return r
             if _is_retryable_response(r):
                 # 5xx — retry
@@ -249,7 +247,5 @@ async def post_with_retry(
 
     # Exhausted retries
     await cb.on_failure()
-    if timings is not None:
-        timings.add("vlm_attempts", attempts_done)
     assert last_exc is not None
     raise last_exc

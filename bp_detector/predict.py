@@ -238,10 +238,22 @@ def preprocess_for_yolo(image_path: str, debug: bool = False):
     return (tmp.name, steps) if debug else tmp.name
 
 
+# Cache model load — YOLO(...) đọc weights từ disk + init torch graph (~1-2s).
+# Load 1 lần per process, dùng lại cho mọi request. Trước đó load mỗi request
+# gây latency YOLO 3s+ — đây là bottleneck chính của fast path.
+_MODEL_CACHE: dict[str, YOLO] = {}
+
+
+def _get_model(model_path: str) -> YOLO:
+    if model_path not in _MODEL_CACHE:
+        _MODEL_CACHE[model_path] = YOLO(model_path)
+    return _MODEL_CACHE[model_path]
+
+
 def run_prediction(image_path, model_path='best.pt'):
-    # 1. Load Model
+    # 1. Load Model (cached)
     try:
-        model = YOLO(model_path)
+        model = _get_model(model_path)
     except Exception as e:
         return {"error": f"Could not load model: {e}"}
 
