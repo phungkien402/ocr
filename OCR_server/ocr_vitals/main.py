@@ -13,19 +13,26 @@ from .validator import validate_vitals
 
 logger = logging.getLogger(__name__)
 SUPPORTED_EXTENSIONS = {".jpg",".jpeg",".png",".bmp",".tiff",".tif",".webp"}
-_BP_DETECTOR_DIR = Path(__file__).parent.parent.parent / "bp_detector"
-_BP_MODEL_PATH   = _BP_DETECTOR_DIR / "best.pt"
+_BP_DETECTOR_DIR    = Path(__file__).parent.parent.parent / "bp_detector"
+# YOLO11 2-stage: stage 1 khoanh vùng SYS/DIA/PUL, stage 2 đọc digit trong từng vùng.
+# Cover cả arm BP monitor và wrist BP monitor. Replace best.pt single-stage cũ.
+_BP_STAGE1_PATH     = _BP_DETECTOR_DIR / "bp_stage1.pt"
+_BP_STAGE2_PATH     = _BP_DETECTOR_DIR / "bp_stage2.pt"
 
 
 def _try_yolo(image_path):
-    """Run YOLO detector. Returns dict with vitals + confident=True if all 3 BP fields found."""
-    if not _BP_MODEL_PATH.exists():
+    """Run YOLO11 2-stage BP detector. Returns dict with vitals + confident=True if all 3 BP fields found."""
+    if not (_BP_STAGE1_PATH.exists() and _BP_STAGE2_PATH.exists()):
         return None
     try:
         if str(_BP_DETECTOR_DIR) not in sys.path:
             sys.path.insert(0, str(_BP_DETECTOR_DIR))
         from predict import run_prediction
-        result = run_prediction(image_path, model_path=str(_BP_MODEL_PATH))
+        result = run_prediction(
+            image_path,
+            stage1_path=str(_BP_STAGE1_PATH),
+            stage2_path=str(_BP_STAGE2_PATH),
+        )
         if result.get("status") != "success":
             return None
         v = result.get("vitals", {})
@@ -39,11 +46,14 @@ def _try_yolo(image_path):
         if not any([sys_val, dia_val, pul_val]): return None
         # All 3 present = high confidence, skip VLM entirely
         confident = all([sys_val, dia_val, pul_val])
-        logger.info("YOLO: SYS=%s DIA=%s PUL=%s (confident=%s)", sys_val, dia_val, pul_val, confident)
+        engine = result.get("engine", "yolo")
+        logger.info("YOLO [%s]: SYS=%s DIA=%s PUL=%s (confident=%s)",
+                    engine, sys_val, dia_val, pul_val, confident)
         return {
             "huyet_ap": {"tam_thu": sys_val, "tam_truong": dia_val} if (sys_val or dia_val) else None,
             "mach": pul_val,
             "confident": confident,
+            "yolo_engine": engine,
             "debug_steps": result.get("debug_steps", {}),
         }
     except Exception as e:
